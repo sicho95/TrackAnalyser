@@ -1,5 +1,5 @@
 import { deterministicHash } from './statistics'
-import type { ComparableContext, GeoPoint, Segment, SensorSample, Session } from './types'
+import type { ComparableContext, GeoPoint, Segment, SegmentDetectionSettings, SensorSample, Session } from './types'
 
 export interface SegmentCreationOptions {
   id?: string
@@ -52,16 +52,42 @@ export interface AutomaticRouteSegmentProfile {
   searchStepPoints: number
 }
 
-export const DEFAULT_AUTOMATIC_ROUTE_SEGMENT_PROFILE: AutomaticRouteSegmentProfile = {
-  version: '1.0.0',
-  minimumOccurrences: 2,
+export const SEGMENT_SIMILARITY_LIMITS = { minimum: 0.8, maximum: 0.99 } as const
+export const SEGMENT_LENGTH_LIMITS_METERS = { minimum: 100, maximum: 5_000 } as const
+export const DEFAULT_SEGMENT_DETECTION_SETTINGS: SegmentDetectionSettings = {
   minimumSimilarity: 0.9,
-  spacingMeters: 20,
-  minimumLengthMeters: 180,
+  minimumLengthMeters: 100,
+}
+
+export const DEFAULT_AUTOMATIC_ROUTE_SEGMENT_PROFILE: AutomaticRouteSegmentProfile = {
+  version: '1.1.0',
+  minimumOccurrences: 2,
+  minimumSimilarity: DEFAULT_SEGMENT_DETECTION_SETTINGS.minimumSimilarity,
+  spacingMeters: 10,
+  minimumLengthMeters: DEFAULT_SEGMENT_DETECTION_SETTINGS.minimumLengthMeters,
   maximumPointDistanceMeters: 35,
   maximumEndpointDistanceMeters: 50,
   maximumDirectionGapDegrees: 45,
   searchStepPoints: 2,
+}
+
+export function normalizeSegmentDetectionSettings(settings?: Partial<SegmentDetectionSettings>): SegmentDetectionSettings {
+  return {
+    minimumSimilarity: clamp(
+      Number.isFinite(settings?.minimumSimilarity) ? settings?.minimumSimilarity ?? DEFAULT_SEGMENT_DETECTION_SETTINGS.minimumSimilarity : DEFAULT_SEGMENT_DETECTION_SETTINGS.minimumSimilarity,
+      SEGMENT_SIMILARITY_LIMITS.minimum,
+      SEGMENT_SIMILARITY_LIMITS.maximum,
+    ),
+    minimumLengthMeters: Math.round(clamp(
+      Number.isFinite(settings?.minimumLengthMeters) ? settings?.minimumLengthMeters ?? DEFAULT_SEGMENT_DETECTION_SETTINGS.minimumLengthMeters : DEFAULT_SEGMENT_DETECTION_SETTINGS.minimumLengthMeters,
+      SEGMENT_LENGTH_LIMITS_METERS.minimum,
+      SEGMENT_LENGTH_LIMITS_METERS.maximum,
+    )),
+  }
+}
+
+export function createAutomaticRouteSegmentProfile(settings?: Partial<SegmentDetectionSettings>): AutomaticRouteSegmentProfile {
+  return { ...DEFAULT_AUTOMATIC_ROUTE_SEGMENT_PROFILE, ...normalizeSegmentDetectionSettings(settings) }
 }
 
 export function createSegment(
@@ -109,7 +135,7 @@ export function detectRecurringRouteSegments(
         for (let rightStart = firstRightStart; rightStart + minimumPoints <= right.points.length; rightStart += profile.searchStepPoints) {
           const leftWindow = left.points.slice(leftStart, leftStart + minimumPoints)
           const rightWindow = right.points.slice(rightStart, rightStart + minimumPoints)
-          const similarity = routeSimilarity(leftWindow, rightWindow, profile.maximumPointDistanceMeters, profile.maximumDirectionGapDegrees)
+          const similarity = alignedRouteSimilarity(leftWindow, rightWindow, profile.maximumPointDistanceMeters, profile.maximumDirectionGapDegrees)
           if (similarity < profile.minimumSimilarity) continue
           const leftFirst = leftWindow[0]
           const leftLast = leftWindow.at(-1)
@@ -118,21 +144,22 @@ export function detectRecurringRouteSegments(
           if (leftFirst === undefined || leftLast === undefined || rightFirst === undefined || rightLast === undefined) continue
           if (haversine(leftFirst, rightFirst) > profile.maximumEndpointDistanceMeters || haversine(leftLast, rightLast) > profile.maximumEndpointDistanceMeters) continue
 
-          let extension = 0
-          let consecutiveMisses = 0
-          while (leftStart + minimumPoints + extension < left.points.length && rightStart + minimumPoints + extension < right.points.length && consecutiveMisses < 2) {
-            const leftPoint = left.points[leftStart + minimumPoints + extension]
-            const rightPoint = right.points[rightStart + minimumPoints + extension]
-            if (leftPoint === undefined || rightPoint === undefined) break
-            if (haversine(leftPoint, rightPoint) <= profile.maximumPointDistanceMeters) consecutiveMisses = 0
-            else consecutiveMisses += 1
-            extension += 1
+          let acceptedPointCount = minimumPoints
+          while (leftStart + acceptedPointCount < left.points.length && rightStart + acceptedPointCount < right.points.length) {
+            const rollingOffset = acceptedPointCount - minimumPoints + 1
+            const leftRollingWindow = left.points.slice(leftStart + rollingOffset, leftStart + acceptedPointCount + 1)
+            const rightRollingWindow = right.points.slice(rightStart + rollingOffset, rightStart + acceptedPointCount + 1)
+            const rollingSimilarity = alignedRouteSimilarity(leftRollingWindow, rightRollingWindow, profile.maximumPointDistanceMeters, profile.maximumDirectionGapDegrees)
+            // Prolonger sans limite fixe tant que la géométrie reste suffisamment similaire.
+            if (rollingSimilarity < profile.minimumSimilarity) break
+            acceptedPointCount += 1
           }
-          const acceptedExtension = Math.max(0, extension - consecutiveMisses)
+          const acceptedLeft = left.points.slice(leftStart, leftStart + acceptedPointCount)
+          const acceptedRight = right.points.slice(rightStart, rightStart + acceptedPointCount)
           candidates.push({
-            left: occurrence(left.track, left.points, leftStart, leftStart + minimumPoints + acceptedExtension - 1),
-            right: occurrence(right.track, right.points, rightStart, rightStart + minimumPoints + acceptedExtension - 1),
-            similarity,
+            left: occurrence(left.track, left.points, leftStart, leftStart + acceptedPointCount - 1),
+            right: occurrence(right.track, right.points, rightStart, rightStart + acceptedPointCount - 1),
+            similarity: alignedRouteSimilarity(acceptedLeft, acceptedRight, profile.maximumPointDistanceMeters, profile.maximumDirectionGapDegrees),
           })
         }
       }
@@ -154,7 +181,7 @@ export function detectRecurringRouteSegments(
   return groups
     .filter((group) => group.occurrences.length >= profile.minimumOccurrences)
     .flatMap((group, groupIndex) => {
-      const fingerprint = deterministicHash({ version: profile.version, signature: group.signature })
+      const fingerprint = deterministicHash({ profile, signature: group.signature })
       const quality = mean(group.similarities)
       return group.occurrences.map((item) => ({
         id: `segment-auto-${deterministicHash({ sessionId: item.session.id, startTime: item.startTime, endTime: item.endTime, fingerprint })}`,
@@ -165,7 +192,14 @@ export function detectRecurringRouteSegments(
         routeFingerprint: fingerprint,
         routeSignature: item.signature,
         context: { type: 'ROUTE_RECURRING', duration: (item.endTime - item.startTime) / 1_000, quality },
-        detection: { algorithmVersion: profile.version, similarity: quality, occurrenceCount: group.occurrences.length, direction: 'FORWARD' as const },
+        detection: {
+          algorithmVersion: profile.version,
+          similarity: quality,
+          minimumSimilarity: profile.minimumSimilarity,
+          minimumLengthMeters: profile.minimumLengthMeters,
+          occurrenceCount: group.occurrences.length,
+          direction: 'FORWARD' as const,
+        },
         manual: false,
       }))
     })
@@ -308,6 +342,17 @@ function routeSimilarity(left: readonly GeoPoint[], right: readonly GeoPoint[], 
   return matches / count
 }
 
+function alignedRouteSimilarity(left: readonly GeoPoint[], right: readonly GeoPoint[], maximumDistance: number, maximumDirectionGap: number): number {
+  if (left.length < 2 || left.length !== right.length || !sameDirection(left, right, maximumDirectionGap)) return 0
+  let matches = 0
+  for (let index = 0; index < left.length; index += 1) {
+    const leftPoint = left[index]
+    const rightPoint = right[index]
+    if (leftPoint !== undefined && rightPoint !== undefined && haversine(leftPoint, rightPoint) <= maximumDistance) matches += 1
+  }
+  return matches / left.length
+}
+
 function sameDirection(left: readonly GeoPoint[], right: readonly GeoPoint[], maximumGap: number): boolean {
   const leftStart = left[0]
   const leftEnd = left.at(-1)
@@ -354,3 +399,4 @@ function haversine(left: GeoPoint, right: GeoPoint): number {
 function relativeGap(left: number, right: number): number { return Math.abs(left - right) / Math.max(Math.abs(left), Math.abs(right), 1e-9) }
 function round(value: number, decimals: number): number { const factor = 10 ** decimals; return Math.round(value * factor) / factor }
 function mean(values: readonly number[]): number { return values.reduce((total, value) => total + value, 0) / Math.max(1, values.length) }
+function clamp(value: number, minimum: number, maximum: number): number { return Math.min(maximum, Math.max(minimum, value)) }

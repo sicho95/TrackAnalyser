@@ -10,6 +10,7 @@ import type {
   Segment,
   Session,
 } from '@track-analyser/domain'
+import { DEFAULT_SEGMENT_DETECTION_SETTINGS, normalizeSegmentDetectionSettings } from '@track-analyser/domain'
 import { openTrackAnalyserDatabase, type TrackAnalyserDatabaseHandle } from './database'
 
 export interface Repository<T extends { id: string }> {
@@ -136,16 +137,18 @@ export class LocalRepositories {
   }
 
   async getSettings(): Promise<AppSettings> {
-    return (
-      (await this.database.get('settings', 'app')) ?? {
-        schemaVersion: 4,
-        theme: 'system',
-        locale: 'fr',
-        unitSystem: 'metric',
-        mapProvider: 'osm',
-        pendingUpdate: false,
-      }
-    )
+    const defaults: AppSettings = {
+      schemaVersion: 4,
+      theme: 'system',
+      locale: 'fr',
+      unitSystem: 'metric',
+      mapProvider: 'osm',
+      segmentDetection: DEFAULT_SEGMENT_DETECTION_SETTINGS,
+      pendingUpdate: false,
+    }
+    const stored = await this.database.get('settings', 'app')
+    if (stored === undefined) return defaults
+    return { ...defaults, ...stored, segmentDetection: normalizeSegmentDetectionSettings(stored.segmentDetection) }
   }
 
   async putSettings(settings: AppSettings): Promise<void> {

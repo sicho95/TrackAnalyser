@@ -1,7 +1,7 @@
 # TrackAnalyser — Spécification maître unifiée
 
 **Statut :** spécification fonctionnelle, technique, matérielle et produit autoritaire  
-**Version du document :** 1.4
+**Version du document :** 1.5
 **Date :** 21 août 2026  
 **Dépôt applicatif :** `sicho95/TrackAnalyser`  
 **Mémoire SichoBrain :** `200_PROJECTS/TrackAnalyzer/SPEC.md`
@@ -852,7 +852,9 @@ V1.1 :
 
 L’absence de cartes hors ligne V1.0 ne doit jamais empêcher l’enregistrement et l’analyse offline.
 
-Dans le récapitulatif d’une Session, la carte doit pouvoir passer en plein écran puis revenir au récapitulatif sans perdre son état. Le sélecteur de fond standard/topographique doit être accessible directement sur la carte réduite et sur la carte plein écran. Le choix est persisté dans les réglages. La trace et les analyses restent consultables lorsque le fond réseau ne charge pas.
+Dans le récapitulatif d’une Session, la carte doit pouvoir passer en plein écran puis revenir au récapitulatif sans perdre son état. Le plein écran utilise le contrôle MapLibre prévu à cet effet, avec repli pseudo-plein-écran sur les navigateurs mobiles qui ne proposent pas l’API native.
+
+Les actions de carte doivent être des contrôles MapLibre intégrés dans le même rail que le zoom et l’orientation, jamais une surcouche HTML extérieure susceptible de masquer la carte ou d’autres commandes. Un unique contrôle de couches ouvre au clic la liste de tous les fonds enregistrés dans le catalogue cartographique de l’application. Il reste utilisable sur la carte réduite et en plein écran. Ajouter un fournisseur au catalogue doit automatiquement le rendre disponible dans ce sélecteur et dans les réglages, sans créer un bouton particulier par fournisseur. Le choix est persisté dans `AppSettings.mapProvider`. La trace et les analyses restent consultables lorsque le fond réseau ne charge pas.
 
 ---
 
@@ -1034,16 +1036,24 @@ Ne pas utiliser le maximum seul comme métrique principale lorsqu’il peut êtr
 
 Les `Segment` de parcours V1 sont détectés automatiquement ; l’utilisateur ne définit pas manuellement leur début et leur fin.
 
-Un tronçon comparable est une portion de trace GPS observée au moins deux fois, dans une même Session ou plusieurs Sessions, avec un coefficient minimal de similarité par défaut de 90 %. Le seuil, la distance minimale, la tolérance GPS, l’espacement de rééchantillonnage et le nombre minimal d’occurrences appartiennent à un profil versionné et calibrable, jamais à des constantes UI.
+Un tronçon comparable est une portion de trace GPS observée au moins deux fois, dans une même Session ou plusieurs Sessions. Le seuil de similarité est configurable de 80 % à 99 %, avec 90 % par défaut. La longueur minimale est configurable de 100 m à 5 km, avec 100 m par défaut. Cette longueur est uniquement la taille minimale nécessaire pour amorcer une reconnaissance : elle n’est jamais une longueur cible ou maximale. Un segment reconnu peut mesurer 100 m, 300 m, 20 km ou davantage.
+
+Le réglage conseillé est 90 % : 80 % est permissif et augmente les faux positifs, tandis qu’un seuil supérieur à 95 % devient sensible au bruit GNSS, aux voies parallèles et aux différences de cadence. Le seuil choisi et la longueur minimale sont persistés dans les réglages. La tolérance GPS, l’espacement de rééchantillonnage et le nombre minimal d’occurrences restent dans un profil algorithmique versionné et calibrable, jamais dans des constantes UI disséminées.
 
 La reconnaissance doit :
 
 - rééchantillonner spatialement les traces pour réduire la dépendance aux cadences GNSS ;
 - comparer des points correspondants avec une tolérance métrique adaptée à la qualité GPS ;
+- amorcer la reconnaissance uniquement après la longueur minimale configurée ;
+- prolonger le segment sans plafond de longueur tant que la proportion glissante de points homologues reste supérieure ou égale au seuil configuré ;
+- terminer le segment à la dernière position acceptée dès que cette similarité glissante passe sous le seuil ;
 - exiger la même direction de parcours et refuser une trace inversée, même si sa géométrie est identique ;
 - regrouper les occurrences qui se recouvrent afin d’éviter une multitude de fenêtres quasi identiques ;
 - conserver pour chaque occurrence la Session, les bornes temporelles, la signature de route, la version de l’algorithme et la qualité de correspondance ;
+- conserver également le seuil et la longueur minimale ayant produit la détection afin de pouvoir l’expliquer et la reproduire ;
 - ne jamais fusionner les Sessions ni les Participants qui partagent un tronçon.
+
+La tolérance métrique sert exclusivement à classer chaque paire de points rééchantillonnés comme correspondante ou non correspondante malgré le bruit GNSS. Elle ne détermine ni la longueur du segment ni son point de fin. La fin dépend du pourcentage de correspondance glissant.
 
 Exemples : même montée dans le même sens, même virage abordé dans le même sens, même descente ou même portion de boucle. Les événements analytiques comme un freinage ou un thermique restent des `Event` et ne doivent pas être transformés automatiquement en segments GPS.
 
@@ -1536,12 +1546,13 @@ La V1 est acceptable si notamment :
 28. la fixture Garmin réelle passe les tests d’import et de conservation ;
 29. le démarrage reprend les derniers choix et laisse cinq secondes annulables avant la création du RAW ;
 30. le zéro de fixation est conservé avec sa qualité et les mesures préparatoires ne contaminent pas le RAW ;
-31. la carte de récapitulatif passe en plein écran et change de fond dans les deux modes ;
+31. la carte de récapitulatif passe en plein écran et expose, dans ses contrôles MapLibre natifs, un sélecteur listant tous les fonds du catalogue dans les deux modes, sans surcouche masquante ;
 32. l’enrichissement GPX/TCX/FIT est accessible depuis la Session et rejoue tous ses RAW ;
 33. les métriques indisponibles sont absentes du récapitulatif principal mais explicables techniquement ;
-34. les segments GPS sont détectés automatiquement à partir d’au moins deux occurrences comparables ;
+34. les segments GPS sont détectés automatiquement à partir d’au moins deux occurrences comparables, avec seuil 80–99 % et longueur minimale configurable ;
 35. une même trace parcourue en sens inverse n’est pas déclarée comparable ;
 36. les exports et la suppression sont accessibles par glissement, et la suppression exige deux confirmations.
+37. un segment peut se prolonger sans longueur maximale tant que la similarité glissante reste suffisante et s’arrête lorsque cette similarité passe sous le seuil.
 
 ---
 

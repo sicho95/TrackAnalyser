@@ -1,13 +1,16 @@
 import {
   DEFAULT_ANALYSIS_PROFILES,
+  DEFAULT_SEGMENT_DETECTION_SETTINGS,
   attachAnalysisRun,
   createPipelineDataset,
   createVersionedAnalysisProfile,
+  createAutomaticRouteSegmentProfile,
   detectRecurringRouteSegments,
   deriveDataset,
   executeAnalysis,
   transitionDataset,
   validateImportTarget,
+  normalizeSegmentDetectionSettings,
   type ActivityGroup,
   type ActivityType,
   type AnalysisRun,
@@ -61,6 +64,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   locale: 'fr',
   unitSystem: 'metric',
   mapProvider: 'osm',
+  segmentDetection: DEFAULT_SEGMENT_DETECTION_SETTINGS,
   pendingUpdate: false,
 }
 
@@ -380,9 +384,17 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
 
   const updateSettings = useCallback(async (next: AppSettings): Promise<void> => {
     if (repositories === undefined) throw new Error('Stockage non initialisé.')
-    await repositories.putSettings(next)
-    setSettings(next)
-  }, [repositories])
+    const normalized = { ...next, segmentDetection: normalizeSegmentDetectionSettings(next.segmentDetection) }
+    const previousSegmentSettings = normalizeSegmentDetectionSettings(settings.segmentDetection)
+    const segmentSettingsChanged = previousSegmentSettings.minimumSimilarity !== normalized.segmentDetection.minimumSimilarity
+      || previousSegmentSettings.minimumLengthMeters !== normalized.segmentDetection.minimumLengthMeters
+    await repositories.putSettings(normalized)
+    setSettings(normalized)
+    if (segmentSettingsChanged) {
+      await refreshAutomaticSegments(repositories)
+      await refresh()
+    }
+  }, [refresh, repositories, settings.segmentDetection])
 
   const deleteSession = useCallback(async (sessionId: string): Promise<void> => {
     if (repositories === undefined) throw new Error('Stockage non initialisé.')
@@ -430,17 +442,18 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
 }
 
 async function refreshAutomaticSegments(repositories: LocalRepositories): Promise<void> {
-  const [storedSessions, storedRuns, storedSegments] = await Promise.all([
+  const [storedSessions, storedRuns, storedSegments, storedSettings] = await Promise.all([
     repositories.sessions.list(),
     repositories.analysisRuns.list(),
     repositories.segments.list(),
+    repositories.getSettings(),
   ])
   const tracks = storedSessions.flatMap((session) => {
     const runs = storedRuns.filter((run) => run.sessionId === session.id)
     const latest = runs.find((run) => run.id === session.latestAnalysisRunId) ?? runs.toSorted((left, right) => left.createdAt.localeCompare(right.createdAt)).at(-1)
     return latest === undefined || latest.result.routePreview.length < 2 ? [] : [{ session, points: latest.result.routePreview }]
   })
-  const detected = detectRecurringRouteSegments(tracks)
+  const detected = detectRecurringRouteSegments(tracks, createAutomaticRouteSegmentProfile(storedSettings.segmentDetection))
   await Promise.all(storedSegments.filter((segment) => !segment.manual).map((segment) => repositories.segments.delete(segment.id)))
   await Promise.all(detected.map((segment) => repositories.segments.put(segment)))
 }
