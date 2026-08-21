@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react'
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAppData } from './context'
+import { messages } from './i18n'
 import { canActivateUpdate } from './update-policy'
 import type { UpdateController } from './update'
 
@@ -33,17 +34,17 @@ function UpdateGuard(): ReactNode {
     }
   }, [activeSession, settings, updateSettings])
   if (!ready || activeSession !== undefined) return null
-  return <button className="update-banner" type="button" onClick={() => void controller.current?.apply()}><RefreshCw size={18} />Nouvelle version prête · Mettre à jour</button>
+  return <button className="update-banner" type="button" onClick={() => void controller.current?.apply()}><RefreshCw size={18} />{messages.shell.updateReady}</button>
 }
 
 export function App(): ReactNode {
   const { ready } = useAppData()
-  if (!ready) return <div className="loading-screen"><div className="loading-mark" />Préparation du stockage local…</div>
-  return <><UpdateGuard /><Routes><Route element={<AppShell><RoutesOutlet /></AppShell>} path="/*" /></Routes></>
+  if (!ready) return <div className="loading-screen"><div className="loading-mark" />{messages.shell.preparing}</div>
+  return <><UpdateGuard /><Routes><Route element={<AppShell messages={messages.navigation}><RoutesOutlet /></AppShell>} path="/*" /></Routes></>
 }
 
 function RoutesOutlet(): ReactNode {
-  return <Suspense fallback={<div className="loading-screen"><div className="loading-mark" />Chargement de la vue…</div>}><Routes>
+  return <Suspense fallback={<div className="loading-screen"><div className="loading-mark" />{messages.shell.loading}</div>}><Routes>
     <Route path="/" element={<HomePage />} />
     <Route path="/record/:id" element={<RecordPage />} />
     <Route path="/sessions" element={<SessionsPage />} />

@@ -4,6 +4,7 @@ import { CircleStop, LocateFixed } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAppData } from '../context'
+import { messages } from '../i18n'
 
 const LIVE_CHANNELS: Readonly<Record<string, MetricChannel[]>> = {
   CAR: ['speed', 'longitudinalAcceleration', 'lateralAcceleration'],
@@ -14,10 +15,7 @@ const LIVE_CHANNELS: Readonly<Record<string, MetricChannel[]>> = {
   BOAT: ['speed', 'roll', 'pitch'],
 }
 
-const LABELS: Partial<Record<MetricChannel, string>> = {
-  speed: 'Vitesse', altitude: 'Altitude', verticalSpeed: 'Vario', heartRate: 'Cardio', cadence: 'Cadence',
-  longitudinalAcceleration: 'Accélération', lateralAcceleration: 'Latéral', roll: 'Inclinaison', pitch: 'Tangage',
-}
+const METRIC_LABELS: Partial<Record<MetricChannel, string>> = messages.metric
 
 export function RecordPage(): ReactNode {
   const { id } = useParams()
@@ -28,7 +26,7 @@ export function RecordPage(): ReactNode {
   const channels = LIVE_CHANNELS[activeSession?.activityType ?? ''] ?? ['speed', 'acceleration', 'altitude']
   const grouped = useMemo(() => Map.groupBy(liveSamples, (sample) => sample.channel), [liveSamples])
 
-  if (activeSession === undefined || activeSession.id !== id) return <div className="screen"><p>Aucune session active. Une session interrompue peut être récupérée depuis Sessions.</p></div>
+  if (activeSession === undefined || activeSession.id !== id) return <div className="screen"><p>{messages.record.missing}</p></div>
 
   const stop = async (): Promise<void> => {
     setStopping(true)
@@ -44,11 +42,12 @@ export function RecordPage(): ReactNode {
           const values = grouped.get(channel)?.flatMap((sample) => typeof sample.value === 'number' ? [sample.value] : []) ?? []
           const value = values.at(-1)
           const spec = visualizationSpecFor(channel)
-          return <section className="live-card" key={channel}><p>{LABELS[channel] ?? channel}</p>{value === undefined ? <div className="live-unavailable">En attente</div> : spec.preferredLiveView === 'DIVERGING_GAUGE' ? <Gauge value={value} minimum={spec.scalePolicy.minimum ?? -10} maximum={spec.scalePolicy.maximum ?? 10} label={LABELS[channel] ?? channel} unit={grouped.get(channel)?.[0]?.unit ?? ''} signed /> : <><strong>{value.toFixed(1)} <small>{grouped.get(channel)?.[0]?.unit}</small></strong><Sparkline values={values} label={`Historique ${LABELS[channel] ?? channel}`} scalePolicy={spec.scalePolicy} /></>}</section>
+          const label = METRIC_LABELS[channel] ?? channel
+          return <section className="live-card" key={channel}><p>{label}</p>{value === undefined ? <div className="live-unavailable">{messages.record.waiting}</div> : spec.preferredLiveView === 'DIVERGING_GAUGE' ? <Gauge value={value} minimum={spec.scalePolicy.minimum ?? -10} maximum={spec.scalePolicy.maximum ?? 10} label={label} unit={grouped.get(channel)?.[0]?.unit ?? ''} signed /> : <><strong>{value.toFixed(1)} <small>{grouped.get(channel)?.[0]?.unit}</small></strong><Sparkline values={values} label={`${messages.record.history} ${label}`} scalePolicy={spec.scalePolicy} /></>}</section>
         })}
       </div>
-      <div className="record-quality"><span>{liveSamples.length} échantillons récents</span><span>Écriture progressive active</span></div>
-      <button className="stop-button" type="button" disabled={stopping} onClick={() => void stop()}><CircleStop size={24} aria-hidden="true" />{stopping ? 'Finalisation et analyse…' : 'Arrêter et analyser'}</button>
+      <div className="record-quality"><span>{liveSamples.length} {messages.record.recentSamples}</span><span>{messages.record.progressiveWrite}</span></div>
+      <button className="stop-button" type="button" disabled={stopping} onClick={() => void stop()}><CircleStop size={24} aria-hidden="true" />{stopping ? messages.record.finalizing : messages.record.stop}</button>
     </div>
   )
 }

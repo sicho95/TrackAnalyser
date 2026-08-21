@@ -4,6 +4,7 @@ import { ScreenHeader } from '@track-analyser/ui'
 import { DatabaseBackup, Download, Moon, RotateCcw, Sun, Upload } from 'lucide-react'
 import { useState, type ChangeEvent, type ReactNode } from 'react'
 import { useAppData } from '../context'
+import { messages } from '../i18n'
 
 function saveFile(bytes: Uint8Array, name: string): void {
   const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/zip' })
@@ -63,11 +64,11 @@ export function SettingsPage(): ReactNode {
     setMessage('Sauvegarde restaurée avec vérification des RAW.')
   }
 
-  return <div className="screen"><ScreenHeader eyebrow={`Version ${__APP_VERSION__} · build ${__BUILD_ID__}`} title="Réglages" />
-    <section className="settings-section"><h2>Apparence</h2><div className="segmented-control"><button className={settings.theme === 'light' ? 'active' : ''} type="button" onClick={() => void updateSettings({ ...settings, theme: 'light' })}><Sun size={17} />Clair</button><button className={settings.theme === 'dark' ? 'active' : ''} type="button" onClick={() => void updateSettings({ ...settings, theme: 'dark' })}><Moon size={17} />Sombre</button><button className={settings.theme === 'system' ? 'active' : ''} type="button" onClick={() => void updateSettings({ ...settings, theme: 'system' })}><RotateCcw size={17} />Système</button></div></section>
-    <section className="settings-section"><h2>Cartographie</h2><label>Source libre<select value={settings.mapProvider} onChange={(event) => void updateSettings({ ...settings, mapProvider: event.target.value })}><option value="osm">OpenStreetMap standard</option><option value="topo">OpenTopoMap relief</option></select></label><p>La carte dépend du réseau en V1. L’enregistrement, les analyses et la trace restent utilisables sans fond cartographique.</p></section>
-    <section className="settings-section"><h2>Données</h2><button className="settings-action" type="button" onClick={() => void backup()}><DatabaseBackup size={20} /><span><strong>Sauvegarde complète</strong><small>Participants, équipements, appareils, groupes, sessions, profils, analyses, réglages et RAW</small></span><Download size={18} /></button><label className="settings-action"><Upload size={20} /><span><strong>Restaurer .tabackup</strong><small>Vérifier le format et les empreintes avant restauration</small></span><input type="file" accept=".tabackup" onChange={(event) => void restore(event)} hidden /></label></section>
-    <section className="privacy-panel"><h2>Local par défaut</h2><p>Aucune télémétrie, aucun compte et aucun envoi automatique. Tout export est déclenché explicitement.</p></section>
+  return <div className="screen"><ScreenHeader eyebrow={`Version ${__APP_VERSION__} · build ${__BUILD_ID__}`} title={messages.settings.title} />
+    <section className="settings-section"><h2>{messages.settings.appearance}</h2><div className="segmented-control"><button className={settings.theme === 'light' ? 'active' : ''} type="button" onClick={() => void updateSettings({ ...settings, theme: 'light' })}><Sun size={17} />{messages.settings.light}</button><button className={settings.theme === 'dark' ? 'active' : ''} type="button" onClick={() => void updateSettings({ ...settings, theme: 'dark' })}><Moon size={17} />{messages.settings.dark}</button><button className={settings.theme === 'system' ? 'active' : ''} type="button" onClick={() => void updateSettings({ ...settings, theme: 'system' })}><RotateCcw size={17} />{messages.settings.system}</button></div></section>
+    <section className="settings-section"><h2>{messages.settings.maps}</h2><label>{messages.settings.freeSource}<select value={settings.mapProvider} onChange={(event) => void updateSettings({ ...settings, mapProvider: event.target.value })}><option value="osm">{messages.settings.standardMap}</option><option value="topo">{messages.settings.topoMap}</option></select></label><p>{messages.settings.mapNotice}</p></section>
+    <section className="settings-section"><h2>{messages.settings.data}</h2><button className="settings-action" type="button" onClick={() => void backup()}><DatabaseBackup size={20} /><span><strong>{messages.settings.backup}</strong><small>{messages.settings.backupBody}</small></span><Download size={18} /></button><label className="settings-action"><Upload size={20} /><span><strong>{messages.settings.restore}</strong><small>{messages.settings.restoreBody}</small></span><input type="file" accept=".tabackup" onChange={(event) => void restore(event)} hidden /></label></section>
+    <section className="privacy-panel"><h2>{messages.settings.privacy}</h2><p>{messages.settings.privacyBody}</p></section>
     {message.length === 0 ? null : <p className="inline-message">{message}</p>}
   </div>
 }

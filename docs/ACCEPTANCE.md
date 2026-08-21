@@ -12,10 +12,11 @@ Cette matrice complète `SPEC.md` sans le remplacer.
 | Diagnostic capteurs | fréquence observée, jitter, trous, couverture, précision et qualité |
 | FIT réel | SDK officiel, fixture de 122 330 octets, 1 319 records et champs inconnus |
 | Fusion par canal | `DataFusionEngine`, provenance et tests AUTO/FUSION |
-| Historique | AnalysisProfile/AnalysisRun, original/dernier et replay déterministe |
+| Historique | AnalysisProfile/AnalysisRun, profils immutables, original/dernier et réanalyse manuelle depuis les RAW |
 | Import/export | FIT, GPX, TCX, Apple XML, JSON, `.tatrip`, CSV, `.tabackup` |
 | Cartographie | MapLibre, OSM/OpenTopoMap interchangeables, analyse sans carte |
-| Visualisations | registre, courbes, histogrammes, jauges signées, comparaison à échelle commune |
+| Visualisations | registre, courbes, histogrammes, jauges signées et huit axes de comparaison à échelle commune |
+| Internationalisation | catalogue français typé, copies principales externalisées et navigation injectée dans le paquet UI |
 | C++/WASM/ESP-IDF | CMake, CTest, Emscripten et composant firmware commun |
 | Hot refresh sûr | version distante, prompt, persistance `pendingUpdate`, blocage pendant session et test de politique |
 

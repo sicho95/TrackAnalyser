@@ -1,6 +1,8 @@
 import type { GeoPoint } from '@track-analyser/domain'
+import 'maplibre-gl/dist/maplibre-gl.css'
 import maplibregl, { type StyleSpecification } from 'maplibre-gl'
 import { useEffect, useRef, type ReactNode } from 'react'
+import { messages } from '../i18n'
 
 const STYLES: Readonly<Record<string, StyleSpecification>> = {
   osm: {
@@ -54,6 +56,6 @@ export function MapView({ route, provider = 'osm' }: { route: readonly GeoPoint[
     })
     return () => map.remove()
   }, [provider, route])
-  if (route.length === 0) return <div className="map-placeholder">Trace cartographique indisponible. Les analyses restent accessibles hors ligne.</div>
-  return <div ref={container} className="map-view" aria-label="Carte du parcours" />
+  if (route.length === 0) return <div className="map-placeholder">{messages.detail.noRoute}</div>
+  return <div ref={container} className="map-view" aria-label={messages.detail.mapAria} />
 }

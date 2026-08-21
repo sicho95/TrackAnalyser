@@ -55,5 +55,9 @@ export default defineConfig({
       },
     },
   ],
-  build: { sourcemap: true },
+  build: {
+    sourcemap: true,
+    // Accepter le chunk MapLibre isolé : il reste différé et ne pénalise pas le démarrage hors carte.
+    chunkSizeWarningLimit: 1_100,
+  },
 })

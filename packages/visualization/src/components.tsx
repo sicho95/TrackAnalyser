@@ -1,5 +1,6 @@
 import type { ComparisonResult, ScalePolicy } from '@track-analyser/domain'
 import type { ReactNode } from 'react'
+import { visualizationFr } from './i18n'
 
 interface ChartProps {
   values: readonly number[]
@@ -29,7 +30,7 @@ function extent(values: readonly number[], policy?: ScalePolicy): [number, numbe
 
 export function Sparkline({ values, width = 160, height = 48, label, scalePolicy, color = 'var(--accent)' }: ChartProps): ReactNode {
   const valid = finite(values)
-  if (valid.length < 2) return <div className="chart-empty">Données insuffisantes</div>
+  if (valid.length < 2) return <div className="chart-empty">{visualizationFr.insufficientData}</div>
   const [minimum, maximum] = extent(valid, scalePolicy)
   const points = valid
     .map((value, index) => {
@@ -62,7 +63,7 @@ export function Gauge({ value, minimum, maximum, label, unit, signed = false }: 
   const ratio = (bounded - minimum) / (maximum - minimum)
   const angle = -120 + ratio * 240
   return (
-    <div className="gauge" role="img" aria-label={`${label} ${value.toFixed(1)} ${unit}, plage ${minimum} à ${maximum}`}>
+    <div className="gauge" role="img" aria-label={`${label} ${value.toFixed(1)} ${unit}, ${visualizationFr.range} ${minimum} à ${maximum}`}>
       <svg viewBox="0 0 200 124" aria-hidden="true">
         <path d="M 26 110 A 82 82 0 1 1 174 110" pathLength="1" className="gauge-track" />
         <path d="M 26 110 A 82 82 0 1 1 174 110" pathLength="1" className="gauge-value" strokeDasharray={`${ratio} 1`} />
@@ -77,7 +78,7 @@ export function Gauge({ value, minimum, maximum, label, unit, signed = false }: 
 
 export function Histogram({ values, width = 320, height = 120, label, color = 'var(--accent)' }: ChartProps): ReactNode {
   const valid = finite(values)
-  if (valid.length === 0) return <div className="chart-empty">Données insuffisantes</div>
+  if (valid.length === 0) return <div className="chart-empty">{visualizationFr.insufficientData}</div>
   const [minimum, maximum] = extent(valid)
   const bucketCount = Math.min(16, Math.max(5, Math.ceil(Math.sqrt(valid.length))))
   const buckets = Array.from({ length: bucketCount }, () => 0)
@@ -102,7 +103,7 @@ export function Histogram({ values, width = 320, height = 120, label, color = 'v
 export function ComparisonBars({ comparison }: { comparison: ComparisonResult }): ReactNode {
   const range = comparison.commonMaximum - comparison.commonMinimum
   return (
-    <div className="comparison-bars" role="img" aria-label={`Comparaison ${comparison.metricId}, échelle commune`}>
+    <div className="comparison-bars" role="img" aria-label={`${visualizationFr.comparison} ${comparison.metricId}, ${visualizationFr.commonScale}`}>
       {comparison.series.map((series) => {
         const value = finite(series.values).reduce((sum, item) => sum + item, 0) / Math.max(1, finite(series.values).length)
         const width = ((value - comparison.commonMinimum) / range) * 100
@@ -110,7 +111,7 @@ export function ComparisonBars({ comparison }: { comparison: ComparisonResult })
           <div className="comparison-row" key={series.id}>
             <div className="comparison-label"><span>{series.label}</span><strong>{value.toFixed(2)} {comparison.unit}</strong></div>
             <div className="comparison-track"><span style={{ width: `${Math.max(0, Math.min(100, width))}%` }} /></div>
-            <small>{series.sampleCount} échantillons · confiance {Math.round(series.confidence * 100)} %</small>
+            <small>{series.sampleCount} {visualizationFr.samples} · {visualizationFr.confidence} {Math.round(series.confidence * 100)} %</small>
           </div>
         )
       })}

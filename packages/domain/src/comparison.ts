@@ -34,6 +34,29 @@ export function explainAnalysisDifference(original: readonly AnalysisMetric[], c
   })
 }
 
+export function normalizedSegment(values: readonly number[], startPercent: number, endPercent: number): number[] {
+  if (!Number.isFinite(startPercent) || !Number.isFinite(endPercent) || startPercent < 0 || endPercent > 100 || startPercent >= endPercent) {
+    throw new Error('Le segment comparable doit respecter 0 ≤ début < fin ≤ 100.')
+  }
+  if (values.length === 0) return []
+  const start = Math.floor(values.length * startPercent / 100)
+  const end = Math.max(start + 1, Math.ceil(values.length * endPercent / 100))
+  return values.slice(start, Math.min(values.length, end))
+}
+
+export function comparableEventValues(
+  events: readonly { type: string; severity?: number; metrics: Readonly<Record<string, number>> }[],
+  eventType: string,
+  metricId: string,
+): number[] {
+  return events
+    .filter((event) => event.type === eventType)
+    .flatMap((event) => {
+      const value = event.metrics[metricId] ?? event.severity
+      return value === undefined || !Number.isFinite(value) ? [] : [value]
+    })
+}
+
 function mean(values: readonly number[]): number {
   const finite = values.filter(Number.isFinite)
   return finite.length === 0 ? Number.NaN : finite.reduce((sum, value) => sum + value, 0) / finite.length

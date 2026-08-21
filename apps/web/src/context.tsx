@@ -2,6 +2,7 @@ import {
   DEFAULT_ANALYSIS_PROFILES,
   attachAnalysisRun,
   createPipelineDataset,
+  createVersionedAnalysisProfile,
   deriveDataset,
   executeAnalysis,
   transitionDataset,
@@ -9,6 +10,7 @@ import {
   type ActivityGroup,
   type ActivityType,
   type AnalysisRun,
+  type AnalysisProfile,
   type AppSettings,
   type Equipment,
   type ImportResult,
@@ -28,6 +30,7 @@ interface AppData {
   equipment: Equipment[]
   activityGroups: ActivityGroup[]
   analysisRuns: AnalysisRun[]
+  analysisProfiles: AnalysisProfile[]
   settings: AppSettings
   activeSession?: Session
   liveSamples: SensorSample[]
@@ -38,6 +41,8 @@ interface AppData {
   startSession(participantId: string, activityType: ActivityType, equipmentId?: string): Promise<Session>
   stopSession(): Promise<Session>
   importData(result: ImportResult, participantId: string, sessionId?: string): Promise<Session>
+  createAnalysisProfile(baseProfileId: string, version: string, name: string, parameters: Readonly<Record<string, number>>): Promise<AnalysisProfile>
+  reanalyzeSession(sessionId: string, profileId: string): Promise<AnalysisRun>
   updateSettings(settings: AppSettings): Promise<void>
   refresh(): Promise<void>
   repositories?: LocalRepositories
@@ -61,6 +66,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
   const [equipment, setEquipment] = useState<Equipment[]>([])
   const [activityGroups, setActivityGroups] = useState<ActivityGroup[]>([])
   const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([])
+  const [analysisProfiles, setAnalysisProfiles] = useState<AnalysisProfile[]>([])
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [activeSession, setActiveSession] = useState<Session>()
   const [liveSamples, setLiveSamples] = useState<SensorSample[]>([])
@@ -71,12 +77,13 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
 
   const refresh = useCallback(async (): Promise<void> => {
     if (repositories === undefined) return
-    const [nextParticipants, nextSessions, nextEquipment, nextGroups, nextRuns, nextSettings] = await Promise.all([
+    const [nextParticipants, nextSessions, nextEquipment, nextGroups, nextRuns, nextProfiles, nextSettings] = await Promise.all([
       repositories.participants.list(),
       repositories.sessions.list(),
       repositories.equipment.list(),
       repositories.activityGroups.list(),
       repositories.analysisRuns.list(),
+      repositories.analysisProfiles.list(),
       repositories.getSettings(),
     ])
     setParticipants(nextParticipants.toSorted((left, right) => left.name.localeCompare(right.name)))
@@ -84,6 +91,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     setEquipment(nextEquipment)
     setActivityGroups(nextGroups)
     setAnalysisRuns(nextRuns)
+    setAnalysisProfiles(nextProfiles.toSorted((left, right) => left.activityType.localeCompare(right.activityType) || left.version.localeCompare(right.version)))
     setSettings(nextSettings)
   }, [repositories])
 
@@ -242,6 +250,44 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     return finalSession
   }, [analysisRuns, participants, refresh, repositories, sessions])
 
+  const createAnalysisProfile = useCallback(async (
+    baseProfileId: string,
+    version: string,
+    name: string,
+    parameters: Readonly<Record<string, number>>,
+  ): Promise<AnalysisProfile> => {
+    if (repositories === undefined) throw new Error('Stockage non initialisé.')
+    const base = analysisProfiles.find((profile) => profile.id === baseProfileId)
+    if (base === undefined) throw new Error('Le profil source est introuvable.')
+    if (analysisProfiles.some((profile) => profile.activityType === base.activityType && profile.version === version.trim())) {
+      throw new Error('Cette version existe déjà pour cette activité.')
+    }
+    const profile = createVersionedAnalysisProfile(base, version, name, parameters)
+    await repositories.analysisProfiles.put(profile)
+    await refresh()
+    return profile
+  }, [analysisProfiles, refresh, repositories])
+
+  const reanalyzeSession = useCallback(async (sessionId: string, profileId: string): Promise<AnalysisRun> => {
+    if (repositories === undefined) throw new Error('Stockage non initialisé.')
+    if (activeSession !== undefined) throw new Error('Terminer la session active avant de lancer une réanalyse.')
+    const session = sessions.find((candidate) => candidate.id === sessionId)
+    if (session === undefined) throw new Error('La session à réanalyser est introuvable.')
+    const profile = analysisProfiles.find((candidate) => candidate.id === profileId)
+    if (profile?.activityType !== session.activityType) throw new Error('Le profil ne correspond pas à cette activité.')
+    if (session.rawDataReferences.length === 0) throw new Error('Aucun RAW immutable n’est disponible pour cette session.')
+    const previousRuns = analysisRuns.filter((run) => run.sessionId === session.id)
+    const { replayRawSamples } = await import('./reanalysis')
+    const samples = await replayRawSamples(session.rawDataReferences, new ProgressiveRawStore())
+    if (samples.length === 0) throw new Error('Les RAW ne contiennent aucune mesure rejouable.')
+    const candidate = analyzeSession(session, samples, previousRuns, profile)
+    const run = previousRuns.find((existing) => existing.id === candidate.id) ?? candidate
+    if (!previousRuns.some((existing) => existing.id === run.id)) await repositories.analysisRuns.put(run)
+    await repositories.sessions.put(attachAnalysisRun(session, run))
+    await refresh()
+    return run
+  }, [activeSession, analysisProfiles, analysisRuns, refresh, repositories, sessions])
+
   const updateSettings = useCallback(async (next: AppSettings): Promise<void> => {
     if (repositories === undefined) throw new Error('Stockage non initialisé.')
     await repositories.putSettings(next)
@@ -255,6 +301,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     equipment,
     activityGroups,
     analysisRuns,
+    analysisProfiles,
     settings,
     ...(activeSession === undefined ? {} : { activeSession }),
     liveSamples,
@@ -265,10 +312,12 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     startSession,
     stopSession,
     importData,
+    createAnalysisProfile,
+    reanalyzeSession,
     updateSettings,
     refresh,
     ...(repositories === undefined ? {} : { repositories }),
-  }), [acquisitionStatus, activeSession, activityGroups, addEquipment, addParticipant, analysisRuns, createActivityGroup, equipment, importData, liveSamples, participants, repositories, refresh, sessions, settings, startSession, stopSession, updateSettings])
+  }), [acquisitionStatus, activeSession, activityGroups, addEquipment, addParticipant, analysisProfiles, analysisRuns, createActivityGroup, createAnalysisProfile, equipment, importData, liveSamples, participants, reanalyzeSession, repositories, refresh, sessions, settings, startSession, stopSession, updateSettings])
 
   return <AppDataContext value={value}>{children}</AppDataContext>
 }

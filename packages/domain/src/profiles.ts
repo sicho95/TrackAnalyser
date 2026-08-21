@@ -43,6 +43,38 @@ export function createDefaultAnalysisProfile(activityType: ActivityType): Analys
   }
 }
 
+export function createVersionedAnalysisProfile(
+  base: AnalysisProfile,
+  version: string,
+  name: string,
+  parameters: Readonly<Record<string, number>>,
+  options: { id?: string; createdAt?: string } = {},
+): AnalysisProfile {
+  const trimmedVersion = version.trim()
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(trimmedVersion)) {
+    throw new Error('Utiliser une version sémantique, par exemple 1.1.0.')
+  }
+  if (trimmedVersion === base.version) throw new Error('La nouvelle version doit différer du profil source.')
+  const entries = Object.entries(parameters)
+  if (entries.length === 0 || entries.some(([, value]) => !Number.isFinite(value))) {
+    throw new Error('Tous les paramètres d’analyse doivent être des nombres finis.')
+  }
+  const trimmedName = name.trim()
+  if (trimmedName.length === 0) throw new Error('Le nom du profil est obligatoire.')
+  return {
+    id: options.id ?? `profile-${base.activityType.toLowerCase()}-${trimmedVersion}-${crypto.randomUUID()}`,
+    activityType: base.activityType,
+    version: trimmedVersion,
+    name: trimmedName,
+    parameters: Object.freeze({ ...parameters }),
+    createdAt: options.createdAt ?? new Date().toISOString(),
+    notes: [
+      `Dérivé du profil ${base.id} version ${base.version}.`,
+      'Conserver cette version afin de reproduire les analyses déjà calculées.',
+    ],
+  }
+}
+
 export const DEFAULT_ANALYSIS_PROFILES = Object.fromEntries(
   ACTIVITY_TYPES.map((activityType) => [activityType, createDefaultAnalysisProfile(activityType)]),
 ) as Record<ActivityType, AnalysisProfile>

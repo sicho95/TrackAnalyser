@@ -2,18 +2,27 @@ import { Activity, BarChart3, Home, Settings, UsersRound } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 
-export function AppShell({ children }: { children: ReactNode }): ReactNode {
+export interface AppShellMessages {
+  home: string
+  sessions: string
+  compare: string
+  profiles: string
+  settings: string
+  aria: string
+}
+
+export function AppShell({ children, messages }: { children: ReactNode; messages: AppShellMessages }): ReactNode {
   const items = [
-    { to: '/', label: 'Accueil', icon: Home },
-    { to: '/sessions', label: 'Sessions', icon: Activity },
-    { to: '/compare', label: 'Comparer', icon: BarChart3 },
-    { to: '/profiles', label: 'Profils', icon: UsersRound },
-    { to: '/settings', label: 'Réglages', icon: Settings },
+    { to: '/', label: messages.home, icon: Home },
+    { to: '/sessions', label: messages.sessions, icon: Activity },
+    { to: '/compare', label: messages.compare, icon: BarChart3 },
+    { to: '/profiles', label: messages.profiles, icon: UsersRound },
+    { to: '/settings', label: messages.settings, icon: Settings },
   ]
   return (
     <div className="app-shell">
       <main>{children}</main>
-      <nav className="tab-bar" aria-label="Navigation principale">
+      <nav className="tab-bar" aria-label={messages.aria}>
         {items.map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => (isActive ? 'active' : undefined)}>
             <Icon aria-hidden="true" size={21} strokeWidth={2} />

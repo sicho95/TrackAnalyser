@@ -12,6 +12,8 @@ mêmes RAW + même profil + même analysisVersion = même résultat
 
 Une évolution de score peut être expliquée par les méthodes des métriques et la différence entre le run original et le run courant. Les anciens résultats ne nécessitent pas de réexécuter un moteur retiré pour rester consultables.
 
+L’écran Profils dérive une nouvelle version sémantique sans modifier le profil source. Le détail d’une session relit ses références RAW pour une réanalyse : NDJSON smartphone en streaming, binaire importé avec son parseur d’origine, ou RAW embarqués dans un `.tatrip`. Si l’empreinte existe déjà, l’AnalysisRun existant est réutilisé au lieu d’être réécrit.
+
 ## Calibration terrain
 
 Les valeurs V1 sont des amorces documentées : seuil de mouvement, pause, freinage, accélération latérale, impact, vario, thermique et rotation. Elles nécessitent des acquisitions contrôlées sur plusieurs appareils, fixations, activités et conditions. Toute correction produit une nouvelle version du profil ; elle ne modifie jamais un run existant.

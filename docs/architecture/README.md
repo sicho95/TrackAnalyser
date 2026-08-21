@@ -53,3 +53,5 @@ Le domaine ne dépend ni du navigateur, ni de MapLibre, ni d’IndexedDB. Les ca
 ## Versions techniques
 
 Le build expose `APP_VERSION`, `BUILD_ID`, `GIT_COMMIT`, `SCHEMA_VERSION` et `ANALYSIS_VERSION`. `version.json` permet une vérification distante. Le service worker prépare la nouvelle version mais l’application ne l’active jamais pendant une session active.
+
+Les copies principales sont regroupées dans un catalogue français typé. Les paquets d’interface reçoivent leurs libellés ou utilisent leur propre catalogue afin de préparer l’anglais sans modifier le domaine.

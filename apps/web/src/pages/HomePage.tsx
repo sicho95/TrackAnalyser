@@ -4,11 +4,7 @@ import { Navigation, Play, ShieldCheck } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../context'
-
-const ACTIVITY_LABELS: Readonly<Record<ActivityType, string>> = {
-  GENERIC: 'Générique', CAR: 'Voiture', MOTORCYCLE: 'Moto', BIKE: 'Vélo', BOAT: 'Bateau', AIRCRAFT: 'Avion',
-  PARAGLIDING: 'Parapente', HIKING: 'Randonnée', TRAIL_RUNNING: 'Trail', RUNNING: 'Course à pied',
-}
+import { messages } from '../i18n'
 
 export function HomePage(): ReactNode {
   const { participants, equipment, activeSession, startSession, ready } = useAppData()
@@ -35,34 +31,34 @@ export function HomePage(): ReactNode {
 
   return (
     <div className="screen home-screen">
-      <ScreenHeader eyebrow="Acquisition locale" title="Prêt à enregistrer" action={<StatusPill state={navigator.onLine ? 'good' : 'neutral'}>{navigator.onLine ? 'En ligne' : 'Hors ligne'}</StatusPill>} />
+      <ScreenHeader eyebrow={messages.home.eyebrow} title={messages.home.title} action={<StatusPill state={navigator.onLine ? 'good' : 'neutral'}>{navigator.onLine ? messages.home.online : messages.home.offline}</StatusPill>} />
       <section className="hero-card">
         <div className="hero-orbit"><Navigation size={34} aria-hidden="true" /></div>
-        <div><p className="kicker">Smartphone autonome</p><h2>Chaque mouvement, avec sa source.</h2><p>GPS et mouvement sont enregistrés progressivement sur cet appareil. Aucun compte ni cloud n’est requis.</p></div>
+        <div><p className="kicker">{messages.home.kicker}</p><h2>{messages.home.heroTitle}</h2><p>{messages.home.heroBody}</p></div>
       </section>
 
       {activeSession === undefined ? (
         <form className="start-card" onSubmit={(event) => { void submit(event) }}>
-          <label>Participant<span>Obligatoire</span><select value={participantId} onChange={(event) => setParticipantId(event.target.value)} required>
-            <option value="">Choisir un participant</option>
+          <label>{messages.home.participant}<span>{messages.home.required}</span><select value={participantId} onChange={(event) => setParticipantId(event.target.value)} required>
+            <option value="">{messages.home.chooseParticipant}</option>
             {participants.filter((participant) => !participant.archived).map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}
           </select></label>
-          <label>Activité<select value={activityType} onChange={(event) => setActivityType(event.target.value as ActivityType)}>
-            {ACTIVITY_TYPES.map((type) => <option key={type} value={type}>{ACTIVITY_LABELS[type]}</option>)}
+          <label>{messages.home.activity}<select value={activityType} onChange={(event) => setActivityType(event.target.value as ActivityType)}>
+            {ACTIVITY_TYPES.map((type) => <option key={type} value={type}>{messages.activity[type]}</option>)}
           </select></label>
-          <label>Équipement<span>Optionnel</span><select value={equipmentId} onChange={(event) => setEquipmentId(event.target.value)}>
-            <option value="">Sans équipement</option>
+          <label>{messages.home.equipment}<span>{messages.common.optional}</span><select value={equipmentId} onChange={(event) => setEquipmentId(event.target.value)}>
+            <option value="">{messages.home.noEquipment}</option>
             {equipment.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select></label>
-          {participants.length === 0 ? <p className="form-notice">Créer d’abord un participant dans Profils. Cette étape empêche toute contamination entre personnes.</p> : null}
+          {participants.length === 0 ? <p className="form-notice">{messages.home.participantNotice}</p> : null}
           {error.length === 0 ? null : <p className="error-message">{error}</p>}
-          <button className="primary-button" type="submit" disabled={!ready || participantId.length === 0 || starting}><Play size={20} aria-hidden="true" />{starting ? 'Autorisation des capteurs…' : 'Démarrer la session'}</button>
+          <button className="primary-button" type="submit" disabled={!ready || participantId.length === 0 || starting}><Play size={20} aria-hidden="true" />{starting ? messages.home.authorizing : messages.home.start}</button>
         </form>
       ) : (
-        <button className="primary-button" type="button" onClick={() => { void navigate(`/record/${activeSession.id}`) }}>Revenir à la session active</button>
+        <button className="primary-button" type="button" onClick={() => { void navigate(`/record/${activeSession.id}`) }}>{messages.home.resume}</button>
       )}
 
-      <section className="safety-card"><ShieldCheck size={24} aria-hidden="true" /><div><strong>Priorité à la sécurité</strong><p>Démarrer avant de conduire ou piloter. Les détails d’analyse sont disponibles après l’arrêt.</p></div></section>
+      <section className="safety-card"><ShieldCheck size={24} aria-hidden="true" /><div><strong>{messages.home.safetyTitle}</strong><p>{messages.home.safetyBody}</p></div></section>
     </div>
   )
 }
