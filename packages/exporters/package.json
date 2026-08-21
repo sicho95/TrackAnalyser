@@ -1,0 +1,1 @@
+{"name":"@track-analyser/exporters","version":"1.0.0","private":true,"type":"module","exports":"./src/index.ts","dependencies":{"@track-analyser/domain":"workspace:*","@track-analyser/storage":"workspace:*","fflate":"^0.8.2"},"scripts":{"typecheck":"tsc --noEmit -p tsconfig.json"}}
