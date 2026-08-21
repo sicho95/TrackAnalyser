@@ -1,0 +1,1 @@
+{"name":"@track-analyser/analytics","version":"1.0.0","private":true,"type":"module","scripts":{"typecheck":"tsc --noEmit -p tsconfig.json","build:wasm":"cmake -S .. -B dist/build -DCMAKE_TOOLCHAIN_FILE=$EMSDK/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake -DTRACK_ANALYSER_BUILD_WASM=ON -DTRACK_ANALYSER_BUILD_TESTS=OFF && cmake --build dist/build"}}

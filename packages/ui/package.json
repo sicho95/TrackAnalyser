@@ -1,0 +1,1 @@
+{"name":"@track-analyser/ui","version":"1.0.0","private":true,"type":"module","exports":"./src/index.tsx","dependencies":{"@track-analyser/domain":"workspace:*","@track-analyser/visualization":"workspace:*","lucide-react":"^0.542.0","react":"^19.1.1","react-router-dom":"^7.8.2"},"peerDependencies":{"react":"^19.1.1"},"scripts":{"typecheck":"tsc --noEmit -p tsconfig.json"}}

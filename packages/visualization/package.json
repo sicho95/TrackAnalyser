@@ -1,0 +1,1 @@
+{"name":"@track-analyser/visualization","version":"1.0.0","private":true,"type":"module","exports":"./src/index.ts","dependencies":{"@track-analyser/domain":"workspace:*","react":"^19.1.1"},"peerDependencies":{"react":"^19.1.1"},"scripts":{"typecheck":"tsc --noEmit -p tsconfig.json"}}
