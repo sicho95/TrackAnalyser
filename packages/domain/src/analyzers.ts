@@ -488,7 +488,8 @@ function qualityFor(dataset: PipelineDataset): SessionQuality {
   const imu = imuChannels.reduce((sum, channel) => sum + channelQuality(channel), 0) / imuChannels.length
   const clock = dataset.synchronization?.confidence ?? 1
   const fusion = values.length === 0 ? 0 : values.filter((series) => series.selectedSourceId !== undefined).length / values.length
-  const calibration = values.some((series) => ['roll', 'pitch', 'yaw'].includes(series.channel)) ? 0.7 : 1
+  const hasUncalibratedProjection = values.some((series) => series.provenance.some((provenance) => provenance.method.includes('non calibré')))
+  const calibration = hasUncalibratedProjection ? 0.55 : values.some((series) => ['roll', 'pitch', 'yaw'].includes(series.channel)) ? 0.7 : 1
   return { gnss, imu, clock, calibration, coverage, fusion, confidence: (gnss + imu + clock + calibration + coverage + fusion) / 6 }
 }
 

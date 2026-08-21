@@ -27,9 +27,9 @@ abstract class BrowserSensorSource implements SensorSource {
     return () => this.listeners.delete(callback)
   }
 
-  protected emit(sample: SensorSample): void {
+  protected emit(sample: SensorSample, qualityCeiling = 1): void {
     this.diagnostics.observe(sample)
-    const quality = this.diagnostics.quality(sample.channel)
+    const quality = Math.min(qualityCeiling, this.diagnostics.quality(sample.channel))
     const enriched = { ...sample, quality, provenance: { ...sample.provenance, quality } }
     this.listeners.forEach((listener) => listener(enriched))
   }
@@ -38,6 +38,9 @@ abstract class BrowserSensorSource implements SensorSource {
 export class PhoneMotionSensorSource extends BrowserSensorSource {
   private active = false
   private readonly sourceId: string
+  private permission: 'UNKNOWN' | 'GRANTED' | 'DENIED' | 'NOT_REQUIRED' = 'UNKNOWN'
+  private gravity = { x: 0, y: 0, z: 0 }
+  private gravityInitialized = false
 
   constructor(deviceId: string) {
     super()
@@ -45,9 +48,24 @@ export class PhoneMotionSensorSource extends BrowserSensorSource {
   }
 
   async requestPermission(): Promise<boolean> {
+    if (this.permission !== 'UNKNOWN') return this.permission === 'GRANTED' || this.permission === 'NOT_REQUIRED'
+    if (typeof DeviceMotionEvent === 'undefined') {
+      this.permission = 'DENIED'
+      return false
+    }
     const constructor = DeviceMotionEvent as unknown as PermissionAwareConstructor
-    if (constructor.requestPermission === undefined) return true
-    return (await constructor.requestPermission()) === 'granted'
+    if (constructor.requestPermission === undefined) {
+      this.permission = 'NOT_REQUIRED'
+      return true
+    }
+    try {
+      const granted = (await constructor.requestPermission()) === 'granted'
+      this.permission = granted ? 'GRANTED' : 'DENIED'
+      return granted
+    } catch {
+      this.permission = 'DENIED'
+      return false
+    }
   }
 
   async start(): Promise<void> {
@@ -70,7 +88,7 @@ export class PhoneMotionSensorSource extends BrowserSensorSource {
   private readonly onMotion = (event: DeviceMotionEvent): void => {
     if (!this.active) return
     const timestamp = performance.timeOrigin + event.timeStamp
-    const acceleration = event.acceleration ?? event.accelerationIncludingGravity
+    const acceleration = event.acceleration ?? this.removeGravity(event.accelerationIncludingGravity)
     if (acceleration !== null) {
       const x = acceleration.x ?? 0
       const y = acceleration.y ?? 0
@@ -79,6 +97,10 @@ export class PhoneMotionSensorSource extends BrowserSensorSource {
       this.emit(this.sample(timestamp, 'custom:acceleration-x', x, 'm/s²'))
       this.emit(this.sample(timestamp, 'custom:acceleration-y', y, 'm/s²'))
       this.emit(this.sample(timestamp, 'custom:acceleration-z', z, 'm/s²'))
+      const screenFrame = this.toScreenFrame(x, y)
+      this.emit(this.sample(timestamp, 'lateralAcceleration', screenFrame.x, 'm/s²', false, 'Projection dans le repère écran non calibré'), 0.55)
+      this.emit(this.sample(timestamp, 'longitudinalAcceleration', screenFrame.y, 'm/s²', false, 'Projection dans le repère écran non calibré'), 0.55)
+      this.emit(this.sample(timestamp, 'verticalAcceleration', z, 'm/s²', false, 'Axe vertical du smartphone non calibré'), 0.55)
     }
     if (event.rotationRate !== null) {
       const alpha = ((event.rotationRate.alpha ?? 0) * Math.PI) / 180
@@ -91,7 +113,38 @@ export class PhoneMotionSensorSource extends BrowserSensorSource {
     }
   }
 
-  private sample(timestamp: number, channel: MetricChannel, value: number, unit: string): SensorSample {
+  private removeGravity(acceleration: DeviceMotionEventAcceleration | null): DeviceMotionEventAcceleration | null {
+    if (acceleration === null) return null
+    const measured = { x: acceleration.x ?? 0, y: acceleration.y ?? 0, z: acceleration.z ?? 0 }
+    if (!this.gravityInitialized) {
+      this.gravity = measured
+      this.gravityInitialized = true
+    } else {
+      // Estimer lentement la gravité afin de ne jamais présenter 1 g comme une accélération du véhicule.
+      const alpha = 0.08
+      this.gravity = {
+        x: this.gravity.x + alpha * (measured.x - this.gravity.x),
+        y: this.gravity.y + alpha * (measured.y - this.gravity.y),
+        z: this.gravity.z + alpha * (measured.z - this.gravity.z),
+      }
+    }
+    return {
+      x: measured.x - this.gravity.x,
+      y: measured.y - this.gravity.y,
+      z: measured.z - this.gravity.z,
+    }
+  }
+
+  private toScreenFrame(x: number, y: number): { x: number; y: number } {
+    const angle = typeof screen !== 'undefined' && 'orientation' in screen ? screen.orientation.angle : 0
+    const radians = (angle * Math.PI) / 180
+    return {
+      x: x * Math.cos(radians) - y * Math.sin(radians),
+      y: x * Math.sin(radians) + y * Math.cos(radians),
+    }
+  }
+
+  private sample(timestamp: number, channel: MetricChannel, value: number, unit: string, original = true, method = 'DeviceMotion observé'): SensorSample {
     return {
       timestamp,
       channel,
@@ -100,7 +153,7 @@ export class PhoneMotionSensorSource extends BrowserSensorSource {
       sourceId: this.sourceId,
       quality: 0,
       stage: 'RAW',
-      provenance: { sourceId: this.sourceId, channel, sampleCount: 1, coverage: 0, quality: 0, method: 'DeviceMotion observé', original: true },
+      provenance: { sourceId: this.sourceId, channel, sampleCount: 1, coverage: 0, quality: 0, method, original },
     }
   }
 }
