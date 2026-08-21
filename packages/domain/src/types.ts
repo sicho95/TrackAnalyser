@@ -365,10 +365,17 @@ export interface Segment {
   detection?: {
     algorithmVersion: string
     similarity: number
+    minimumSimilarity: number
+    minimumLengthMeters: number
     occurrenceCount: number
     direction: 'FORWARD'
   }
   manual: boolean
+}
+
+export interface SegmentDetectionSettings {
+  minimumSimilarity: number
+  minimumLengthMeters: number
 }
 
 export interface ComparisonSeries {
@@ -439,6 +446,7 @@ export interface AppSettings {
   locale: 'fr'
   unitSystem: 'metric' | 'imperial' | 'aviation' | 'nautical'
   mapProvider: string
+  segmentDetection?: SegmentDetectionSettings
   activeSessionId?: string
   lastSessionDefaults?: {
     participantId: string
