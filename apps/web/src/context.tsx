@@ -39,6 +39,7 @@ interface AppData {
   activeSession?: Session
   liveSamples: SensorSample[]
   acquisitionStatus: string
+  acquisitionErrors: string[]
   addParticipant(name: string): Promise<Participant>
   addEquipment(name: string, type: string): Promise<Equipment>
   createActivityGroup(sessionIds: string[], title?: string): Promise<ActivityGroup>
@@ -48,6 +49,7 @@ interface AppData {
   createAnalysisProfile(baseProfileId: string, version: string, name: string, parameters: Readonly<Record<string, number>>): Promise<AnalysisProfile>
   reanalyzeSession(sessionId: string, profileId: string): Promise<AnalysisRun>
   createManualSegment(sessionId: string, name: string, startPercent: number, endPercent: number): Promise<Segment>
+  deleteSession(sessionId: string): Promise<void>
   updateSettings(settings: AppSettings): Promise<void>
   refresh(): Promise<void>
   repositories?: LocalRepositories
@@ -77,6 +79,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
   const [activeSession, setActiveSession] = useState<Session>()
   const [liveSamples, setLiveSamples] = useState<SensorSample[]>([])
   const [acquisitionStatus, setAcquisitionStatus] = useState('IDLE')
+  const [acquisitionErrors, setAcquisitionErrors] = useState<string[]>([])
   const coordinator = useRef<AcquisitionCoordinator | undefined>(undefined)
   const liveSamplesRef = useRef<SensorSample[]>([])
   const polling = useRef<number | undefined>(undefined)
@@ -165,6 +168,10 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     if (!participants.some((participant) => participant.id === participantId)) throw new Error('Participant invalide.')
     const phone = createObservedPhoneProfile()
     phone.assignedParticipantId = participantId
+    const motion = new PhoneMotionSensorSource(phone.id)
+    const location = new PhoneLocationSensorSource(phone.id)
+    // Déclencher la demande iOS pendant le geste utilisateur, avant tout accès asynchrone au stockage.
+    await motion.requestPermission()
     await repositories.devices.put(phone)
     const session: Session = {
       id: crypto.randomUUID(),
@@ -179,7 +186,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
       status: 'DRAFT',
     }
     await repositories.sessions.put(session)
-    const sources = [new PhoneMotionSensorSource(phone.id), new PhoneLocationSensorSource(phone.id)]
+    const sources = [motion, location]
     sources.forEach((source) => source.subscribe((sample) => {
       liveSamplesRef.current.push(sample)
       if (liveSamplesRef.current.length > 50_000) liveSamplesRef.current.splice(0, liveSamplesRef.current.length - 50_000)
@@ -188,11 +195,16 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     coordinator.current = acquisition
     liveSamplesRef.current = []
     setLiveSamples([])
+    setAcquisitionErrors([])
     setActiveSession(session)
     await acquisition.start(session)
-    setAcquisitionStatus('RECORDING')
+    const initialState = acquisition.getState()
+    setAcquisitionStatus(initialState.status)
+    setAcquisitionErrors(initialState.sourceErrors)
     polling.current = window.setInterval(() => {
-      setAcquisitionStatus(acquisition.getState().status)
+      const state = acquisition.getState()
+      setAcquisitionStatus(state.status)
+      setAcquisitionErrors(state.sourceErrors)
       setLiveSamples(liveSamplesRef.current.slice(-500))
     }, 200)
     await refresh()
@@ -215,6 +227,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     coordinator.current = undefined
     setActiveSession(undefined)
     setAcquisitionStatus('IDLE')
+    setAcquisitionErrors([])
     await refresh()
     return withAnalysis
   }, [activeSession, refresh, repositories])
@@ -347,6 +360,17 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     setSettings(next)
   }, [repositories])
 
+  const deleteSession = useCallback(async (sessionId: string): Promise<void> => {
+    if (repositories === undefined) throw new Error('Stockage non initialisé.')
+    if (activeSession?.id === sessionId) throw new Error('Arrêter la session active avant de la supprimer.')
+    const session = sessions.find((candidate) => candidate.id === sessionId)
+    if (session === undefined) throw new Error('Session introuvable.')
+    const rawStore = new ProgressiveRawStore()
+    for (const reference of session.rawDataReferences) await rawStore.delete(reference)
+    await repositories.deleteSessionGraph(sessionId)
+    await refresh()
+  }, [activeSession?.id, refresh, repositories, sessions])
+
   const value = useMemo<AppData>(() => ({
     ready: repositories !== undefined,
     participants,
@@ -360,6 +384,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     ...(activeSession === undefined ? {} : { activeSession }),
     liveSamples,
     acquisitionStatus,
+    acquisitionErrors,
     addParticipant,
     addEquipment,
     createActivityGroup,
@@ -369,10 +394,11 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     createAnalysisProfile,
     reanalyzeSession,
     createManualSegment,
+    deleteSession,
     updateSettings,
     refresh,
     ...(repositories === undefined ? {} : { repositories }),
-  }), [acquisitionStatus, activeSession, activityGroups, addEquipment, addParticipant, analysisProfiles, analysisRuns, createActivityGroup, createAnalysisProfile, createManualSegment, equipment, importData, liveSamples, participants, reanalyzeSession, repositories, refresh, segments, sessions, settings, startSession, stopSession, updateSettings])
+  }), [acquisitionErrors, acquisitionStatus, activeSession, activityGroups, addEquipment, addParticipant, analysisProfiles, analysisRuns, createActivityGroup, createAnalysisProfile, createManualSegment, deleteSession, equipment, importData, liveSamples, participants, reanalyzeSession, repositories, refresh, segments, sessions, settings, startSession, stopSession, updateSettings])
 
   return <AppDataContext value={value}>{children}</AppDataContext>
 }

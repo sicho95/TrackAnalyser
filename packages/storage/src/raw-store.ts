@@ -116,6 +116,22 @@ export class ProgressiveRawStore {
     const chunks = await database.getAllFromIndex('rawChunks', 'streamId', reference.id)
     for (const chunk of chunks.toSorted((left, right) => left.index - right.index)) yield chunk.bytes
   }
+
+  async delete(reference: RawDataReference): Promise<void> {
+    if (reference.storage === 'OPFS' && typeof navigator !== 'undefined' && 'storage' in navigator) {
+      try {
+        const root = await navigator.storage.getDirectory()
+        const directory = await root.getDirectoryHandle('track-analyser-raw')
+        await directory.removeEntry(`${reference.id}.bin`)
+      } catch (error) {
+        // Rendre la suppression idempotente lorsqu'un navigateur a déjà évincé le fichier OPFS.
+        if (!(error instanceof DOMException) || error.name !== 'NotFoundError') throw error
+      }
+    }
+    const database = await openTrackAnalyserDatabase()
+    const keys = await database.getAllKeysFromIndex('rawChunks', 'streamId', reference.id)
+    await Promise.all(keys.map((key) => database.delete('rawChunks', key)))
+  }
 }
 
 export async function* chunkBytes(bytes: Uint8Array, chunkSize = 256 * 1024): AsyncGenerator<Uint8Array> {

@@ -12,6 +12,8 @@ Les objets métier sont accessibles uniquement par `LocalRepositories`. Le sché
 
 Une écriture sous une clé RAW existante avec un contenu différent est refusée. Les checkpoints enregistrent l’identifiant de session active. Au prochain lancement, une session encore `RECORDING` devient `INTERRUPTED` et peut être retrouvée.
 
+La suppression explicite d’une session efface son fichier OPFS ou ses chunks IndexedDB, puis supprime atomiquement la session, ses AnalysisRuns et ses segments. Les ActivityGroups sont mis à jour sans toucher aux sessions des autres participants. L’interface exige deux confirmations ; une sauvegarde préalable reste le seul moyen de restauration.
+
 ## Froid
 
 - `.tatrip` transporte une session, ses segments, ses AnalysisRuns, des aperçus normalisés et tous ses fichiers RAW ;

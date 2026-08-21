@@ -102,6 +102,39 @@ export class LocalRepositories {
     return this.database.getAllFromIndex('sessions', 'status', 'INTERRUPTED')
   }
 
+  async deleteSessionGraph(sessionId: string): Promise<void> {
+    const transaction = this.database.transaction(['sessions', 'analysisRuns', 'segments', 'activityGroups'], 'readwrite')
+    const runsStore = transaction.objectStore('analysisRuns')
+    const segmentsStore = transaction.objectStore('segments')
+    const groupsStore = transaction.objectStore('activityGroups')
+    const sessionsStore = transaction.objectStore('sessions')
+    const [runs, segments, groups] = await Promise.all([
+      runsStore.index('sessionId').getAll(sessionId),
+      segmentsStore.index('sessionId').getAll(sessionId),
+      groupsStore.getAll(),
+    ])
+    await Promise.all([
+      ...runs.map((run) => runsStore.delete(run.id)),
+      ...segments.map((segment) => segmentsStore.delete(segment.id)),
+      ...groups.filter((group) => group.sessionIds.includes(sessionId)).map((group) => {
+        const sessionIds = group.sessionIds.filter((candidate) => candidate !== sessionId)
+        if (sessionIds.length >= 2) return groupsStore.put({ ...group, sessionIds })
+        return Promise.all([
+          groupsStore.delete(group.id),
+          ...sessionIds.map(async (remainingId) => {
+            const remaining = await sessionsStore.get(remainingId)
+            if (remaining === undefined) return
+            const ungrouped = { ...remaining }
+            delete ungrouped.activityGroupId
+            await sessionsStore.put(ungrouped)
+          }),
+        ]).then(() => undefined)
+      }),
+      sessionsStore.delete(sessionId),
+    ])
+    await transaction.done
+  }
+
   async getSettings(): Promise<AppSettings> {
     return (
       (await this.database.get('settings', 'app')) ?? {

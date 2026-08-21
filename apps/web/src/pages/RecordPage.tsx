@@ -5,6 +5,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAppData } from '../context'
 import { messages } from '../i18n'
+import { toDisplaySeries } from '../measurements'
 
 const LIVE_CHANNELS: Readonly<Record<string, MetricChannel[]>> = {
   CAR: ['speed', 'longitudinalAcceleration', 'lateralAcceleration'],
@@ -19,12 +20,15 @@ const METRIC_LABELS: Partial<Record<MetricChannel, string>> = messages.metric
 
 export function RecordPage(): ReactNode {
   const { id } = useParams()
-  const { activeSession, liveSamples, acquisitionStatus, stopSession } = useAppData()
+  const { activeSession, liveSamples, acquisitionStatus, acquisitionErrors, stopSession } = useAppData()
   const navigate = useNavigate()
   const [stopping, setStopping] = useState(false)
   const elapsed = activeSession === undefined ? 0 : Math.max(0, (Date.now() - Date.parse(activeSession.startTime)) / 1000)
   const channels = LIVE_CHANNELS[activeSession?.activityType ?? ''] ?? ['speed', 'acceleration', 'altitude']
   const grouped = useMemo(() => Map.groupBy(liveSamples, (sample) => sample.channel), [liveSamples])
+  const motionObserved = liveSamples.some((sample) => sample.sourceId.endsWith(':motion'))
+  const locationObserved = liveSamples.some((sample) => sample.sourceId.endsWith(':geolocation'))
+  const motionError = acquisitionErrors.find((error) => error.toLocaleLowerCase('fr-FR').includes('mouvement') || error.includes('DeviceMotion'))
 
   if (activeSession === undefined || activeSession.id !== id) return <div className="screen"><p>{messages.record.missing}</p></div>
 
@@ -40,12 +44,17 @@ export function RecordPage(): ReactNode {
       <div className="live-grid">
         {channels.map((channel) => {
           const values = grouped.get(channel)?.flatMap((sample) => typeof sample.value === 'number' ? [sample.value] : []) ?? []
-          const value = values.at(-1)
+          const rawUnit = grouped.get(channel)?.[0]?.unit ?? ''
+          const displayed = toDisplaySeries(channel, values, rawUnit)
+          const value = displayed.values.at(-1)
           const spec = visualizationSpecFor(channel)
           const label = METRIC_LABELS[channel] ?? channel
-          return <section className="live-card" key={channel}><p>{label}</p>{value === undefined ? <div className="live-unavailable">{messages.record.waiting}</div> : spec.preferredLiveView === 'DIVERGING_GAUGE' ? <Gauge value={value} minimum={spec.scalePolicy.minimum ?? -10} maximum={spec.scalePolicy.maximum ?? 10} label={label} unit={grouped.get(channel)?.[0]?.unit ?? ''} signed /> : <><strong>{value.toFixed(1)} <small>{grouped.get(channel)?.[0]?.unit}</small></strong><Sparkline values={values} label={`${messages.record.history} ${label}`} scalePolicy={spec.scalePolicy} /></>}</section>
+          const requiresMotion = channel !== 'speed' && channel !== 'altitude' && channel !== 'verticalSpeed' && channel !== 'heartRate' && channel !== 'cadence'
+          const waiting = requiresMotion && motionError !== undefined ? messages.record.motionUnavailable : messages.record.waiting
+          return <section className="live-card" key={channel}><p>{label}</p>{value === undefined ? <div className="live-unavailable">{waiting}</div> : spec.preferredLiveView === 'DIVERGING_GAUGE' ? <Gauge value={value} minimum={spec.scalePolicy.minimum ?? -10} maximum={spec.scalePolicy.maximum ?? 10} label={label} unit={displayed.unit} signed /> : <><strong>{value.toFixed(1)} <small>{displayed.unit}</small></strong><Sparkline values={displayed.values} label={`${messages.record.history} ${label}`} scalePolicy={spec.scalePolicy} /></>}</section>
         })}
       </div>
+      <div className="source-diagnostics" aria-label={messages.record.sourceDiagnostics}><span className={locationObserved ? 'source-ok' : ''}>GPS · {locationObserved ? messages.record.observed : messages.record.waiting}</span><span className={motionObserved ? 'source-ok' : motionError === undefined ? '' : 'source-error'}>Mouvement · {motionObserved ? messages.record.observed : motionError === undefined ? messages.record.authorizedWaiting : messages.record.refused}</span></div>
       <div className="record-quality"><span>{liveSamples.length} {messages.record.recentSamples}</span><span>{messages.record.progressiveWrite}</span></div>
       <button className="stop-button" type="button" disabled={stopping} onClick={() => void stop()}><CircleStop size={24} aria-hidden="true" />{stopping ? messages.record.finalizing : messages.record.stop}</button>
     </div>
