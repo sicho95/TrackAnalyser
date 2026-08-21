@@ -117,4 +117,3 @@ export function ComparisonBars({ comparison }: { comparison: ComparisonResult })
     </div>
   )
 }
-

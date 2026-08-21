@@ -14,4 +14,3 @@ Les dix activités possèdent un analyseur enregistré. Chaque métrique renvoie
 - `RUNNING` : allure, cadence, cardio, puissance, foulée et Running Dynamics.
 
 Les maximums sensibles aux artefacts sont accompagnés de percentiles robustes. Les scores opaques sont exclus.
-

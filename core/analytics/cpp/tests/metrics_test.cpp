@@ -23,4 +23,3 @@ int main() {
     assert(std::abs(track_analyser::cumulative_positive_gain(altitudes) - 12.0) < 1e-12);
     return 0;
 }
-

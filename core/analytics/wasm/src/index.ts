@@ -29,4 +29,3 @@ export function createAnalyticsCore(module: AnalyticsWasmModule): AnalyticsCore 
     percentile: (values, probability) => invoke('ta_percentile', values, probability),
   }
 }
-

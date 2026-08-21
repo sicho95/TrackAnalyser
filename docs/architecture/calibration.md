@@ -7,4 +7,3 @@
 3. projeter les indices longitudinaux issus des phases GNSS synchronisées dans le plan horizontal, puis reconstruire un repère orthonormé avant/lateral/vertical.
 
 Le snapshot conserve matrice, biais, méthode et qualité. L’algorithme refuse une calibration si l’immobilité ou les phases de déplacement sont insuffisantes. Les tolérances initiales nécessitent une calibration terrain selon fixation, appareil et activité. Les vibrations fines exigent une fixation rigide et reproductible.
-

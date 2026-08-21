@@ -17,4 +17,3 @@ statistics/analysis-runs.json
 ```
 
 La restauration rejette les versions inconnues, réécrit les RAW par chunks, vérifie leur SHA-256 puis restaure les objets métier. La fonction de migration accepte le manifeste historique version 0 et le convertit explicitement en version 1.
-

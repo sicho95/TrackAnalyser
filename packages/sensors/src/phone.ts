@@ -189,4 +189,3 @@ export function createObservedPhoneProfile(id = crypto.randomUUID()): DeviceProf
     updatedAt: now,
   }
 }
-

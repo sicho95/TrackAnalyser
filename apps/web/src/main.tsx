@@ -23,4 +23,3 @@ createRoot(root).render(
     </HashRouter>
   </StrictMode>,
 )
-

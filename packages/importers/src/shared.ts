@@ -61,4 +61,3 @@ export function serializableValue(value: unknown): unknown {
 export function semicirclesToDegrees(value: number): number {
   return Math.abs(value) <= 180 ? value : (value * 180) / 2 ** 31
 }
-

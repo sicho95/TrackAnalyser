@@ -9,4 +9,3 @@ test-results/
 core/analytics/build/
 core/analytics/wasm/dist/
 apps/web/public/version.json
-

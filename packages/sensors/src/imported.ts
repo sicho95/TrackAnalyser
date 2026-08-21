@@ -37,4 +37,3 @@ export class ImportedFileSource implements SensorSource {
     return () => this.listeners.delete(callback)
   }
 }
-

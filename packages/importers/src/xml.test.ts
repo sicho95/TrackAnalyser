@@ -14,4 +14,3 @@ describe('imports XML', () => {
     expect(parseTcx(bytes, 'run.tcx').identity.activityType).toBe('RUNNING')
   })
 })
-

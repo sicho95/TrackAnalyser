@@ -18,4 +18,3 @@ Une écriture sous une clé RAW existante avec un contenu différent est refusé
 - `.tabackup` transporte réglages, participants, équipements, appareils, calibrations, ActivityGroups, sessions, profils, analyses et RAW.
 
 La restauration vérifie les empreintes RAW avant d’inscrire le snapshot métier.
-

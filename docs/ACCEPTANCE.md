@@ -26,4 +26,3 @@ Les API capteurs iOS et l’installation écran d’accueil doivent être valid�
 Les seuils de calibration, freinage, inclinaison, impact, thermique et phase de vol sont opérationnels et versionnés mais doivent être calibrés par acquisitions terrain contrôlées. Toute modification créera une nouvelle version de profil.
 
 Le déploiement Pages ne se produit qu’après merge sur `main` et CI verte ; une branche de PR ne modifie donc pas la production.
-

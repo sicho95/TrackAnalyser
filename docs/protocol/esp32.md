@@ -13,4 +13,3 @@ Messages V1.1 prévus :
 - `SYNC_STATUS`, `TIME_SYNC`.
 
 Les chunks portent index, taille, SHA-256 et indicateur final. Le smartphone demande les index manquants. L’UUID de session assure déduplication et reprise. Le boîtier continue à enregistrer sans téléphone.
-

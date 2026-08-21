@@ -21,4 +21,3 @@ describe('pont WebAssembly', () => {
     expect(core.percentile([1, 2, 3], 0.5)).toBe(2)
   })
 })
-

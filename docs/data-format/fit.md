@@ -12,4 +12,3 @@ Deux représentations sont conservées :
 Le mapping vers TrackAnalyser est séparé et couvre position, distance, vitesse/enhanced speed, altitude/enhanced altitude, cardio, cadence, puissance, vario, température, pression et Running Dynamics disponibles.
 
 La fixture réelle `tests/fixtures/garmin/24048447957_ACTIVITY.fit` fait 122 330 octets, contient 1 319 records et possède l’empreinte `1a6ab020cd0d168f921867465bcd4add77d6588e72703864dfeef3b9d2dc3af4`.
-

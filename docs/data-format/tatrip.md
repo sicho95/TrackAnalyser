@@ -12,4 +12,3 @@ raw/*
 ```
 
 Le manifeste contient `format`, `formatVersion`, `schemaVersion`, date et identifiant de session. L’import restaure les métadonnées et échantillons utilisables, puis impose un nouveau choix du participant avant création ou enrichissement. L’archive originale est également conservée en RAW.
-

@@ -71,4 +71,3 @@ export function SettingsPage(): ReactNode {
     {message.length === 0 ? null : <p className="inline-message">{message}</p>}
   </div>
 }
-

@@ -21,4 +21,3 @@ Le flux d’import impose cet ordre :
 ## Association d’appareil
 
 `DeviceProfile.assignedParticipantId` sert uniquement de suggestion. L’utilisateur confirme toujours le participant pendant l’import. Changer la suggestion ne réattribue pas les sessions existantes.
-

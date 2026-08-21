@@ -23,4 +23,3 @@ describe('isolation multi-participant', () => {
     ).toThrow(/autre participant/i)
   })
 })
-

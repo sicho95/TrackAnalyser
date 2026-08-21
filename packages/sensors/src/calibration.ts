@@ -98,4 +98,3 @@ export function calibrateDevice(
     method: 'immobilité pour biais/gravité puis indices GNSS synchronisés pour axe longitudinal',
   }
 }
-

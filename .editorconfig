@@ -9,4 +9,3 @@ indent_size = 2
 
 [*.{cpp,hpp}]
 indent_size = 4
-

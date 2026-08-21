@@ -41,4 +41,3 @@ export function StatusPill({ state, children }: { state: 'good' | 'warning' | 'n
 export function EmptyState({ icon, title, description, action }: { icon: ReactNode; title: string; description: string; action?: ReactNode }): ReactNode {
   return <section className="empty-state">{icon}<h2>{title}</h2><p>{description}</p>{action}</section>
 }
-

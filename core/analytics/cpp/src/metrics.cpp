@@ -92,4 +92,3 @@ double cumulative_positive_gain(std::span<const double> values) {
 }
 
 }  // namespace track_analyser
-

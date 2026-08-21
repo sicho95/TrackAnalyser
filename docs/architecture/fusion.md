@@ -20,4 +20,3 @@ Le rapport conserve sources retenues/rejetées, stratégie, motif, qualité, cou
 ## Synchronisation
 
 La V1 utilise UTC et accepte des offsets explicites par source. Le rapport contient méthode, offsets, dérive et confiance. La corrélation d’événements est prévue par le type `SynchronizationReport` pour une calibration ultérieure.
-

@@ -13,4 +13,3 @@ Le fichier binaire ou XML original est conservé octet pour octet. FIT utilise `
 ## Référence
 
 `RawDataReference` contient stockage, chemin, taille, SHA-256, nombre de chunks, nom importé et source. Le hash porte sur le flux complet et reste stable quel que soit le découpage des chunks.
-

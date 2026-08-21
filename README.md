@@ -15,4 +15,3 @@ pnpm verify
 ```
 
 L’application est servie avec le chemin GitHub Pages `/TrackAnalyser/` et utilise un routage par hash.
-

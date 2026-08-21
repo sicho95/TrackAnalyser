@@ -28,4 +28,3 @@ describe('DataFusionEngine', () => {
     expect(output.report.decisions[0]?.reason).toMatch(/Refuser/)
   })
 })
-

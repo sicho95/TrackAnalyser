@@ -6,4 +6,3 @@ if(ESP_PLATFORM)
     )
     target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_20)
 endif()
-

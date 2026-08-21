@@ -15,4 +15,3 @@ export function ProfilesPage(): ReactNode {
     <section className="profile-section"><h2>Équipements</h2><form className="stacked-form" onSubmit={(event) => void submitEquipment(event)}><input value={equipmentName} onChange={(event) => setEquipmentName(event.target.value)} placeholder="Nom, par ex. Vélo route" required /><input value={equipmentType} onChange={(event) => setEquipmentType(event.target.value)} placeholder="Type" required /><button className="secondary-button" type="submit"><Plus size={18} />Ajouter l’équipement</button></form><div className="profile-list">{equipment.map((item) => <article key={item.id}><Bike size={22} /><div><strong>{item.name}</strong><span>{item.type}</span></div></article>)}</div></section>
   </div>
 }
-

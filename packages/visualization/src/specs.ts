@@ -109,4 +109,3 @@ export function visualizationSpecFor(channel: MetricChannel): VisualizationSpec 
     }
   )
 }
-

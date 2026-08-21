@@ -15,4 +15,3 @@ Une évolution de score peut être expliquée par les méthodes des métriques e
 ## Calibration terrain
 
 Les valeurs V1 sont des amorces documentées : seuil de mouvement, pause, freinage, accélération latérale, impact, vario, thermique et rotation. Elles nécessitent des acquisitions contrôlées sur plusieurs appareils, fixations, activités et conditions. Toute correction produit une nouvelle version du profil ; elle ne modifie jamais un run existant.
-

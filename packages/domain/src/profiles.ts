@@ -46,4 +46,3 @@ export function createDefaultAnalysisProfile(activityType: ActivityType): Analys
 export const DEFAULT_ANALYSIS_PROFILES = Object.fromEntries(
   ACTIVITY_TYPES.map((activityType) => [activityType, createDefaultAnalysisProfile(activityType)]),
 ) as Record<ActivityType, AnalysisProfile>
-

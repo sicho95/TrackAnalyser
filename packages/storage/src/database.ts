@@ -90,4 +90,3 @@ export async function deleteTrackAnalyserDatabaseForTests(): Promise<void> {
 }
 
 export type TrackAnalyserDatabaseHandle = IDBPDatabase<TrackAnalyserDatabase>
-

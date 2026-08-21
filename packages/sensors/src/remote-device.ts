@@ -14,4 +14,3 @@ export abstract class RemoteDeviceSource implements SensorSource {
   abstract getCapabilities(): Promise<SensorCapabilities>
   abstract subscribe(callback: (sample: SensorSample) => void): () => void
 }
-
