@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
       configurable: true,
       value: {
         watchPosition(success: PositionCallback) {
-          setTimeout(() => success({ timestamp: Date.now(), coords: { latitude: 48, longitude: 2, altitude: 100, accuracy: 4, altitudeAccuracy: 8, heading: 0, speed: 3, toJSON: () => ({}) } } as GeolocationPosition), 20)
+          for (let index = 0; index < 14; index += 1) setTimeout(() => success({ timestamp: Date.now(), coords: { latitude: 48 + index * 0.00003, longitude: 2 + index * 0.00012, altitude: 100 + index, accuracy: 4, altitudeAccuracy: 8, heading: 0, speed: 3, toJSON: () => ({}) } } as GeolocationPosition), 20 + index * 30)
           return 1
         },
         clearWatch: () => undefined,
@@ -29,6 +29,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('crée un participant puis enregistre et analyse hors cloud', async ({ page }) => {
+  test.setTimeout(60_000)
   await page.getByRole('link', { name: /Profils/ }).click()
   await page.getByLabel('Nom du participant').fill('Damien')
   await page.getByRole('button', { name: 'Ajouter', exact: true }).click()
@@ -45,20 +46,43 @@ test('crée un participant puis enregistre et analyse hors cloud', async ({ page
   await page.getByRole('combobox', { name: /Activité/ }).selectOption({ label: 'Voiture' })
   await page.getByRole('combobox', { name: /Équipement/ }).selectOption({ label: 'Kuga' })
   await page.getByRole('button', { name: 'Démarrer la session' }).click()
-  await expect(page.getByText('RECORDING')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Fixez le téléphone' })).toBeVisible()
   await expect.poll(() => page.evaluate(() => (window as unknown as { motionPermissionRequested?: boolean }).motionPermissionRequested)).toBe(true)
+  await page.getByRole('button', { name: 'Annuler' }).click()
+  await expect(page.getByRole('button', { name: 'Démarrer la session' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Démarrer la session' }).click()
+  await page.evaluate(() => { for (let index = 0; index < 60; index += 1) window.dispatchEvent(new DeviceMotionEvent('devicemotion')) })
+  await expect(page.getByText('RECORDING')).toBeVisible({ timeout: 8_000 })
   await page.evaluate(() => window.dispatchEvent(new DeviceMotionEvent('devicemotion')))
   await expect(page.getByText('Mouvement · mesures reçues')).toBeVisible()
   await expect(page.getByText('km/h')).toBeVisible()
+  await page.waitForTimeout(500)
   await page.getByRole('button', { name: 'Arrêter et analyser' }).click()
   await expect(page.getByText('Données techniques et provenance')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText('Indisponible')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Afficher la carte en plein écran' })).toBeVisible()
+  await page.getByRole('button', { name: 'Topo' }).click()
+  await page.getByRole('button', { name: 'Afficher la carte en plein écran' }).click()
+  await expect(page.getByRole('button', { name: 'Réduire la carte' })).toBeVisible()
+  await page.getByRole('button', { name: 'Réduire la carte' }).click()
+  await expect(page.getByText('Enrichir cette session')).toBeVisible()
+  await page.locator('.enrichment-file input').setInputFiles({
+    name: 'complement.gpx',
+    mimeType: 'application/gpx+xml',
+    buffer: Buffer.from('<?xml version="1.0"?><gpx version="1.1"><trk><name>Complément</name><trkseg><trkpt lat="48.0001" lon="2.0001"><ele>101</ele><time>2026-08-21T20:00:00Z</time></trkpt><trkpt lat="48.0002" lon="2.0003"><ele>102</ele><time>2026-08-21T20:00:02Z</time></trkpt></trkseg></trk></gpx>'),
+  })
+  await expect(page.getByText(/Cible verrouillée :/)).toBeVisible()
+  await page.getByRole('button', { name: 'Enrichir et réanalyser' }).click()
+  await expect(page.getByText(/Session enrichie/)).toBeVisible({ timeout: 15_000 })
   await page.getByRole('combobox', { name: 'Profil versionné' }).selectOption({ label: 'Profil CAR V1 calibré · 1.1.0' })
   await page.getByRole('button', { name: 'Lancer la réanalyse' }).click()
   await expect(page.getByText(/L’analyse originale reste conservée/)).toBeVisible({ timeout: 15_000 })
-  await page.getByLabel('Nom', { exact: true }).fill('Départ test')
-  await page.getByRole('button', { name: 'Conserver le segment' }).click()
-  await expect(page.getByText(/Départ test est disponible/)).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('link', { name: /Accueil/ }).click()
+  await expect(page.getByRole('combobox', { name: /Participant/ })).toHaveValue(/.+/)
+  await expect(page.getByRole('combobox', { name: /Activité/ })).toHaveValue('CAR')
+  await expect(page.getByRole('combobox', { name: /Équipement/ })).not.toHaveValue('')
+  await page.getByRole('link', { name: /Sessions/ }).click()
+  await page.locator('.session-card-main').first().click()
   await page.getByRole('button', { name: 'Supprimer cette session' }).click()
   await page.getByRole('button', { name: 'Continuer' }).click()
   await expect(page.getByRole('heading', { name: 'Confirmer la suppression définitive' })).toBeVisible()

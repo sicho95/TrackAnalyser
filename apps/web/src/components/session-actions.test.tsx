@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { session } from '../../../../tests/helpers'
 import { DeleteSessionDialog } from './DeleteSessionDialog'
 import { EquipmentIcon } from './EquipmentIcon'
@@ -41,5 +41,11 @@ describe('actions et équipements de session', () => {
     fireEvent(front, new MouseEvent('pointerup', { bubbles: true }))
     const exportButtons = container.querySelectorAll<HTMLButtonElement>('.swipe-exports button')
     expect([...exportButtons].map((button) => button.tabIndex)).toEqual([0, 0, 0])
+  })
+
+  it('ouvre le détail lors d’un toucher simple sans capturer le pointeur', async () => {
+    render(<MemoryRouter><Routes><Route path="/" element={<SwipeSessionCard session={session('session', 'damien', 'CAR')} participantName="Damien" onExport={async () => undefined} onDelete={() => undefined} />} /><Route path="/sessions/:id" element={<p>Détail ouvert</p>} /></Routes></MemoryRouter>)
+    await userEvent.click(screen.getByRole('link', { name: /Voiture Damien/ }))
+    expect(screen.getByText('Détail ouvert')).toBeDefined()
   })
 })

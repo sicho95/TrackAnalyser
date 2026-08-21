@@ -1,6 +1,6 @@
 import type { Session } from '@track-analyser/domain'
 import { StatusPill } from '@track-analyser/ui'
-import { Archive, FileJson, FileSpreadsheet, MoreHorizontal, Trash2 } from 'lucide-react'
+import { Archive, FileJson, FileSpreadsheet, Trash2 } from 'lucide-react'
 import { useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { messages } from '../i18n'
@@ -18,14 +18,17 @@ export function SwipeSessionCard({ session, participantName, onExport, onDelete 
   const pointerDown = (event: PointerEvent<HTMLDivElement>): void => {
     start.current = { x: event.clientX, y: event.clientY, offset }
     moved.current = false
-    event.currentTarget.setPointerCapture?.(event.pointerId)
   }
   const pointerMove = (event: PointerEvent<HTMLDivElement>): void => {
     if (start.current === undefined) return
     const dx = event.clientX - start.current.x
     const dy = event.clientY - start.current.y
     if (Math.abs(dy) > Math.abs(dx) && !moved.current) return
-    if (Math.abs(dx) > 7) moved.current = true
+    if (Math.abs(dx) > 7) {
+      moved.current = true
+      // Capturer seulement après avoir reconnu un glissement horizontal afin de laisser un toucher simple activer le lien.
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+    }
     setOffset(Math.max(-DELETE_WIDTH, Math.min(EXPORT_WIDTH, start.current.offset + dx)))
   }
   const pointerUp = (): void => {
@@ -50,7 +53,6 @@ export function SwipeSessionCard({ session, participantName, onExport, onDelete 
       <Link to={`/sessions/${session.id}`} className="session-card-main" onClick={(event) => { if (moved.current) event.preventDefault() }}>
         <div className="session-icon"><ActivityIcon activityType={session.activityType} /></div><div><strong>{session.title ?? messages.activity[session.activityType]}</strong><span>{participantName} · {new Date(session.startTime).toLocaleDateString('fr-FR')}</span></div><StatusPill state={session.status === 'COMPLETED' ? 'good' : session.status === 'INTERRUPTED' ? 'warning' : 'neutral'}>{session.status}</StatusPill>
       </Link>
-      <button className="session-more" type="button" aria-label={messages.sessions.actions} onClick={() => setOffset((current) => current === EXPORT_WIDTH ? 0 : EXPORT_WIDTH)}><MoreHorizontal size={20} /></button>
     </div>
   </article>
 }

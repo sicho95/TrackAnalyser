@@ -362,6 +362,12 @@ export interface Segment {
   routeFingerprint?: string
   routeSignature?: GeoPoint[]
   context?: ComparableContext
+  detection?: {
+    algorithmVersion: string
+    similarity: number
+    occurrenceCount: number
+    direction: 'FORWARD'
+  }
   manual: boolean
 }
 
@@ -434,6 +440,11 @@ export interface AppSettings {
   unitSystem: 'metric' | 'imperial' | 'aviation' | 'nautical'
   mapProvider: string
   activeSessionId?: string
+  lastSessionDefaults?: {
+    participantId: string
+    activityType: ActivityType
+    equipmentId?: string
+  }
   pendingUpdate: boolean
 }
 
