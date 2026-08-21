@@ -1,36 +1,39 @@
-# TrackAnalyser — Spécification maître
+# TrackAnalyser — Spécification maître unifiée
 
-**Statut :** spécification fonctionnelle, technique, matérielle et produit de référence  
-**Version du document :** 1.1  
+**Statut :** spécification fonctionnelle, technique, matérielle et produit autoritaire  
+**Version du document :** 1.3  
 **Date :** 21 août 2026  
-**Dépôt :** `sicho95/TrackAnalyser`  
-**Destination SichoBrain :** `200_PROJECTS/TrackAnalyser/SPEC.md`
+**Dépôt applicatif :** `sicho95/TrackAnalyser`  
+**Mémoire SichoBrain :** `200_PROJECTS/TrackAnalyzer/SPEC.md`
+
+> Ce document est la source normative unique du projet. En cas d’ambiguïté, cette version prévaut sur les échanges de conversation antérieurs. Toute évolution structurante doit être répercutée ici.
 
 ---
 
 # 1. Vision
 
-TrackAnalyser est une plateforme locale, multi-capteur, multi-source, multi-participant et multi-activité permettant :
+TrackAnalyser est une plateforme locale, multi-capteur, multi-source, multi-participant et multi-activité destinée à enregistrer, enrichir, fusionner, analyser, visualiser et comparer des déplacements et mouvements dans le temps.
 
-- d’enregistrer un déplacement ou une activité ;
-- de conserver les données physiques brutes ;
-- de fusionner plusieurs sources de données issues d’appareils différents ;
-- d’enrichir une session existante avec des données provenant d’une montre, d’une ceinture cardio, d’un fichier FIT, GPX, TCX, Apple Health ou d’un autre boîtier ;
-- d’analyser le comportement d’une personne, d’un véhicule ou d’un équipement ;
-- de comparer des sessions, participants, équipements, appareils et portions de parcours ;
-- de reconnaître des portions ou événements comparables ;
-- de suivre l’évolution statistique dans le temps ;
-- de recalculer les analyses historiques lorsque les algorithmes évoluent ;
-- de fonctionner avec un smartphone seul, un boîtier autonome seul ou les deux associés ;
-- de rester utilisable sans connexion Internet.
+Le projet doit permettre :
 
-TrackAnalyser ne doit pas être conçu comme un simple GPS logger ni comme une application dédiée à l’automobile.
+- d’enregistrer une activité avec un smartphone seul ;
+- d’enregistrer une activité avec un boîtier ESP32 autonome ;
+- d’utiliser un boîtier et un smartphone ensemble sans rendre le téléphone indispensable ;
+- d’importer après coup des données issues d’une Garmin, Apple Watch, ceinture cardio, compteur vélo ou autre source ;
+- de fusionner plusieurs sources appartenant au même participant ;
+- de conserver plusieurs participants ayant réalisé la même sortie sans mélanger leurs données ;
+- de comparer des participants, équipements, appareils, trajets, portions de parcours ou événements ;
+- de conserver les données physiques brutes et la provenance de chaque métrique ;
+- de recalculer les analyses lorsque les algorithmes évoluent ;
+- de conserver l’historique des résultats produits par différentes versions du moteur ;
+- de présenter les données sous forme de visualisations compréhensibles et adaptées à leur signification ;
+- de fonctionner sans compte, sans cloud obligatoire et sans connexion Internet pour les fonctions essentielles.
 
-Il doit constituer une plateforme générique d’analyse du mouvement et de comparaison objective.
+TrackAnalyser n’est pas un simple GPS logger ni un analyseur automobile spécialisé. Il constitue une plateforme générique d’analyse objective du mouvement.
 
 ---
 
-# 2. Activités prises en charge en V1
+# 2. Activités V1 obligatoires
 
 La V1 doit implémenter réellement les modes suivants :
 
@@ -45,17 +48,17 @@ La V1 doit implémenter réellement les modes suivants :
 - `TRAIL_RUNNING`
 - `RUNNING`
 
-Le mode `GENERIC` doit permettre d’utiliser immédiatement TrackAnalyser pour une activité non encore spécialisée, par exemple kayak, SUP, ski, roller, kart, kitesurf ou autre.
+Le mode `GENERIC` doit permettre d’utiliser immédiatement TrackAnalyser pour une activité non encore spécialisée : kayak, SUP, ski, roller, kart, kitesurf ou autre.
 
-Une session initialement enregistrée en `GENERIC` doit pouvoir être réanalysée ultérieurement lorsqu’un analyseur spécifique devient disponible.
+Une session enregistrée en `GENERIC` doit pouvoir être réanalysée ultérieurement lorsqu’un analyseur spécialisé devient disponible.
 
 ---
 
-# 3. Principes d’architecture non négociables
+# 3. Principes non négociables
 
-## 3.1. Ne jamais dépendre d’un matériel unique
+## 3.1. Indépendance matérielle
 
-Ne jamais coder en dur :
+Ne jamais coder en dur comme cas métier :
 
 - iPhone 15 Pro ;
 - iPhone 13 ;
@@ -67,7 +70,7 @@ Ne jamais coder en dur :
 - un véhicule précis ;
 - une activité précise.
 
-Utiliser des abstractions génériques :
+Utiliser des abstractions :
 
 - `Participant`
 - `ActivityGroup`
@@ -75,34 +78,37 @@ Utiliser des abstractions génériques :
 - `Equipment`
 - `DeviceProfile`
 - `SensorSource`
+- `MetricChannel`
 - `Segment`
 - `Event`
-- `MetricChannel`
 - `ActivityAnalyzer`
+- `AnalysisProfile`
+- `AnalysisRun`
+- `VisualizationSpec`
 
-L’iPhone 15 Pro utilisé au début du développement constitue uniquement le premier appareil de test.
+L’iPhone 15 Pro constitue seulement le premier appareil de test.
 
-## 3.2. Conserver les données brutes
+## 3.2. Local-first et offline-first
 
-Ne jamais conserver uniquement les scores ou les résultats calculés.
+Sans Internet, permettre :
 
-Toujours préserver autant que possible :
+- création et configuration d’une session ;
+- acquisition ;
+- enregistrement ;
+- stockage ;
+- analyse ;
+- historique ;
+- comparaison des données locales ;
+- import ;
+- export ;
+- backup ;
+- restauration.
 
-- GNSS ;
-- IMU ;
-- baromètre ;
-- fréquence cardiaque ;
-- cadence ;
-- puissance ;
-- température ;
-- métriques de course ;
-- métriques spécifiques provenant de FIT, GPX, TCX, Apple Health ou autres ;
-- métadonnées de qualité ;
-- timestamps d’origine.
+Ne pas imposer de compte, serveur ou cloud.
 
-Permettre de recalculer ultérieurement les résultats avec une nouvelle version des algorithmes.
+## 3.3. Données brutes immuables
 
-## 3.3. Séparer acquisition, normalisation, fusion et analyse
+Ne jamais remplacer les données sources par des données calculées.
 
 Pipeline obligatoire :
 
@@ -119,41 +125,29 @@ DERIVED
  ↓
 ANALYSIS
  ↓
-COMPARISON / PROFILES
+VISUALIZATION / COMPARISON / PROFILES
 ```
 
-## 3.4. Local-first et offline-first
+Les couches calculées doivent être supprimables et recalculables sans modifier `RAW`.
 
-Permettre sans Internet :
+## 3.4. Explicabilité
 
-- création d’une session ;
-- enregistrement ;
-- stockage ;
-- analyse ;
-- consultation ;
-- comparaison locale ;
-- import ;
-- export ;
-- backup ;
-- restauration.
+Toute métrique dérivée et tout score doivent permettre de retrouver :
 
-Ne pas imposer de compte ni de cloud.
+- les canaux sources ;
+- leur qualité ;
+- la méthode ;
+- les paramètres ;
+- la version du moteur ;
+- la version du profil d’analyse.
+
+Ne pas produire de score opaque.
 
 ---
 
 # 4. Modèle multi-participant
 
 ## 4.1. Participant
-
-Un `Participant` représente une personne dont les données physiologiques, sportives ou de pilotage sont analysées.
-
-Exemples :
-
-- Damien ;
-- Claire ;
-- autre personne.
-
-Structure indicative :
 
 ```ts
 interface Participant {
@@ -170,140 +164,75 @@ interface Participant {
 
 Chaque `Session` doit être rattachée à exactement un participant.
 
-Cette règle est essentielle pour éviter de mélanger les données de deux personnes ayant effectué le même trajet au même moment.
-
-Exemple :
-
-- Damien porte l’ESP32 et une Garmin Enduro 2 ;
-- Claire effectue la même randonnée avec sa propre montre ou une Apple Watch ;
-- les deux personnes parcourent exactement la même trace ;
-- TrackAnalyser doit créer ou conserver deux sessions distinctes, chacune rattachée au bon participant.
-
-## 4.3. ActivityGroup
-
-Créer un objet `ActivityGroup` pour représenter une sortie réelle partagée par plusieurs participants.
+Deux personnes effectuant la même trace au même moment possèdent deux sessions distinctes.
 
 Exemple :
 
 ```text
-ActivityGroup : Randonnée du 21 août
+Randonnée commune
 │
 ├── Session Damien
 │   ├── ESP32
-│   └── Garmin Enduro 2
+│   ├── Garmin Enduro 2
+│   └── ceinture cardio éventuelle
 │
 └── Session Claire
-    └── Apple Watch
+    ├── Apple Watch ou Garmin
+    └── téléphone éventuel
 ```
 
-Structure indicative :
+Ne jamais fusionner des données physiologiques ou sportives entre participants sur la seule base d’une similarité temporelle ou géographique.
+
+## 4.3. ActivityGroup
+
+Créer `ActivityGroup` pour représenter une sortie réelle partagée.
 
 ```ts
 interface ActivityGroup {
   id: string
   activityType: ActivityType
+  title?: string
   startTime?: string
   endTime?: string
-  title?: string
   routeFingerprint?: string
   sessionIds: string[]
   metadata?: Record<string, unknown>
 }
 ```
 
-L’`ActivityGroup` permet ensuite de comparer directement les participants ayant partagé la même sortie.
-
-Il ne doit jamais fusionner leurs données entre elles.
+L’`ActivityGroup` sert à regrouper et comparer plusieurs sessions sans les fusionner.
 
 ---
 
-# 5. Règle d’import et d’enrichissement multi-participant
+# 5. Import et enrichissement multi-participant
 
-Lors de l’import d’une source externe destinée à enrichir une session, demander obligatoirement le participant cible avant toute fusion.
+L’import destiné à enrichir une session doit obligatoirement déterminer le participant avant la session cible.
 
-Flux obligatoire :
-
-```text
-Importer un fichier
-      ↓
-Identifier le format
-      ↓
-Choisir le participant
-      ↓
-Rechercher les sessions compatibles de CE participant
-      ↓
-Proposer la session correspondante
-      ↓
-Fusionner ou créer une nouvelle session
-```
-
-Ne jamais rechercher d’abord la session uniquement sur la base du trajet et de l’heure puis fusionner automatiquement.
-
-Deux personnes peuvent parcourir exactement la même trace au même moment.
-
-## 5.1. Suggestion de participant
-
-Si le fichier contient une identité ou un appareil déjà associé à un participant, suggérer ce participant.
-
-Demander néanmoins confirmation lorsque le risque d’ambiguïté existe.
-
-## 5.2. Recherche de session cible
-
-Une fois le participant choisi, rechercher uniquement parmi ses sessions en utilisant :
-
-- heure de départ ;
-- heure de fin ;
-- durée ;
-- localisation de départ ;
-- localisation d’arrivée ;
-- recouvrement spatial ;
-- activité ;
-- équipement éventuel.
-
-Afficher un score de correspondance.
-
-Exemple :
+Flux :
 
 ```text
-Session probable de Damien : 99,3 %
-21/08/2026 — 10:03 → 12:48
-Randonnée
+Sélectionner le fichier
+ ↓
+Identifier le format et les canaux
+ ↓
+Choisir ou confirmer le participant
+ ↓
+Rechercher uniquement les sessions de ce participant
+ ↓
+Proposer les correspondances
+ ↓
+Enrichir / choisir une autre session / créer une nouvelle session
+ ↓
+Afficher le rapport de fusion
 ```
 
-Proposer :
+Si l’appareil ou le fichier est déjà associé à un participant, le suggérer sans supprimer la possibilité de confirmer ou modifier.
 
-- `Enrichir cette session`
-- `Choisir une autre session`
-- `Créer une nouvelle session`
-
-## 5.3. Sortie partagée
-
-Si une session très similaire existe chez un autre participant :
-
-- ne pas proposer de la fusionner ;
-- proposer éventuellement de rattacher les deux sessions au même `ActivityGroup` ;
-- permettre ensuite leur comparaison.
+Une session similaire appartenant à un autre participant peut être proposée pour rattachement au même `ActivityGroup`, jamais pour fusion.
 
 ---
 
 # 6. Equipment
-
-Un `Equipment` représente l’engin ou l’équipement utilisé.
-
-Exemples :
-
-- Ford Kuga ;
-- moto ;
-- vélo ;
-- parapente ;
-- bateau ;
-- avion.
-
-Un équipement peut être absent.
-
-Exemple : course à pied sans équipement spécifique.
-
-Structure indicative :
 
 ```ts
 interface Equipment {
@@ -316,25 +245,13 @@ interface Equipment {
 }
 ```
 
+Exemples : voiture, moto, vélo, parapente, bateau, avion. `equipmentId` reste optionnel pour marche, trail ou course à pied.
+
 ---
 
-# 7. DeviceProfile
+# 7. DeviceProfile et SensorCapabilities
 
-Un `DeviceProfile` représente un appareil physique produisant des données.
-
-Exemples :
-
-- iPhone de Damien ;
-- iPhone de Claire ;
-- Android ;
-- T-Beam Supreme ;
-- Waveshare ESP32-S3 ;
-- Garmin Enduro 2 ;
-- Apple Watch ;
-- ceinture cardio ;
-- capteur de puissance vélo.
-
-Structure indicative :
+Un `DeviceProfile` représente un appareil réel produisant des données.
 
 ```ts
 interface DeviceProfile {
@@ -353,141 +270,81 @@ interface DeviceProfile {
 }
 ```
 
-Ne jamais déterminer les capacités uniquement à partir du nom commercial.
+Les capacités sont déclarées puis mesurées réellement : fréquence obtenue, jitter, trous, précision, qualité GNSS, couverture et dérive éventuelle.
+
+Canaux à prévoir au minimum :
+
+- GNSS ;
+- accéléromètre ;
+- gyroscope ;
+- baromètre ;
+- fréquence cardiaque ;
+- cadence ;
+- longueur de foulée ;
+- puissance ;
+- température ;
+- métriques spécifiques importées.
+
+Ne jamais déduire les capacités uniquement du nom commercial.
 
 ---
 
-# 8. SensorCapabilities et qualité réelle
+# 8. Modes de fonctionnement
 
-Chaque appareil doit déclarer et mesurer ses capacités.
+## 8.1. Smartphone autonome
 
-Exemple :
+Le smartphone assure acquisition, stockage, analyse, historique et comparaison.
 
-```ts
-interface SensorCapabilities {
-  gnss?: {
-    available: boolean
-    nominalFrequencyHz?: number
-    observedFrequencyHz?: number
-    supportsPps?: boolean
-  }
-  accelerometer?: {
-    available: boolean
-    nominalFrequencyHz?: number
-    observedFrequencyHz?: number
-    rangeG?: number
-  }
-  gyroscope?: {
-    available: boolean
-    nominalFrequencyHz?: number
-    observedFrequencyHz?: number
-  }
-  barometer?: {
-    available: boolean
-    observedFrequencyHz?: number
-  }
-  heartRate?: { available: boolean }
-  cadence?: { available: boolean }
-  strideLength?: { available: boolean }
-  power?: { available: boolean }
-  temperature?: { available: boolean }
-}
-```
+Ce mode reste complet après l’arrivée des boîtiers.
 
-Au démarrage et pendant une session, mesurer ce qui est réellement observé :
+## 8.2. Boîtier + smartphone
 
-- fréquence moyenne ;
-- jitter ;
-- trous d’échantillonnage ;
-- qualité GNSS ;
-- précision déclarée ;
-- couverture ;
-- dérive éventuelle.
+Le boîtier devient normalement la source primaire et la source de vérité de l’enregistrement.
+
+Le smartphone sert à :
+
+- configurer ;
+- choisir participant, activité et équipement ;
+- afficher les données temps réel ;
+- synchroniser ;
+- analyser ;
+- visualiser ;
+- comparer ;
+- importer/exporter.
+
+Le boîtier continue à enregistrer si le smartphone se verrouille, se déconnecte, quitte l’application ou s’éteint.
+
+## 8.3. Boîtier autonome
+
+Permettre :
+
+- choix ou reprise du participant ;
+- choix ou reprise de l’activité ;
+- choix ou reprise de l’équipement ;
+- démarrage/arrêt ;
+- enregistrement progressif ;
+- état GNSS, stockage et batterie ;
+- métriques principales temps réel ;
+- bilan simplifié ;
+- stockage de sessions non synchronisées.
+
+## 8.4. Synchronisation différée
+
+Chaque session utilise un UUID.
+
+Permettre reprise de transfert, déduplication, téléchargement de chunks manquants et synchronisation ultérieure.
 
 ---
 
-# 9. Modes de fonctionnement
+# 9. Matériel cible
 
-## 9.1. Smartphone autonome
+## 9.1. Smartphone
 
-Le smartphone assure :
+Première plateforme : iOS/PWA. Prévoir Android sans refonte.
 
-- acquisition ;
-- enregistrement ;
-- analyse ;
-- stockage ;
-- affichage ;
-- comparaison.
+## 9.2. Waveshare ESP32-S3 existant
 
-Ce mode reste une fonction complète du produit même après l’ajout des boîtiers.
-
-## 9.2. Boîtier + smartphone
-
-Le boîtier devient la source primaire.
-
-Le smartphone fournit :
-
-- configuration ;
-- choix participant ;
-- choix activité ;
-- choix équipement ;
-- supervision ;
-- affichage temps réel ;
-- historique ;
-- analyses ;
-- comparaison ;
-- synchronisation ;
-- import/export.
-
-Le boîtier doit continuer à enregistrer si le smartphone :
-
-- se verrouille ;
-- perd la connexion ;
-- quitte l’application ;
-- s’éteint.
-
-## 9.3. Boîtier autonome
-
-Permettre sans téléphone :
-
-- reprendre le dernier participant ;
-- choisir un participant ;
-- reprendre ou choisir une activité ;
-- reprendre ou choisir un équipement ;
-- démarrer ;
-- arrêter ;
-- enregistrer ;
-- afficher l’état ;
-- afficher quelques métriques ;
-- afficher un bilan simplifié ;
-- conserver les sessions.
-
-## 9.4. Synchronisation différée
-
-Associer chaque session à un UUID.
-
-Lors de la reconnexion :
-
-- lister les sessions inconnues ;
-- récupérer les chunks manquants ;
-- éviter les doublons ;
-- reprendre un transfert interrompu.
-
----
-
-# 10. Matériel cible
-
-## 10.1. Smartphone
-
-Première plateforme de test : iOS/PWA.
-
-Support Android prévu par l’architecture.
-
-Ne pas dépendre d’un modèle précis.
-
-## 10.2. Waveshare ESP32-S3 existant
-
-Utiliser comme plateforme intermédiaire :
+Utilisable comme plateforme intermédiaire avec :
 
 - ESP32-S3 ;
 - QMI8658 ;
@@ -496,18 +353,11 @@ Utiliser comme plateforme intermédiaire :
 - Bluetooth ;
 - écran tactile.
 
-Permettre :
-
-- acquisition IMU ;
-- stockage local ;
-- affichage ;
-- communication avec l’application.
-
 Ajouter un GNSS externe si nécessaire.
 
-## 10.3. T-Beam Supreme
+## 9.3. T-Beam Supreme
 
-Cible privilégiée pour un boîtier autonome complet :
+Cible privilégiée pour le boîtier complet :
 
 - ESP32-S3 ;
 - IMU ;
@@ -521,249 +371,144 @@ Cible privilégiée pour un boîtier autonome complet :
 - Bluetooth ;
 - LoRa disponible mais non requis par TrackAnalyser.
 
----
-
-# 11. Fréquences de mesure
-
-## Smartphone
-
-Accepter les fréquences réellement fournies.
-
-Ne jamais supposer une cadence constante.
-
-Utiliser les timestamps réels.
-
-## Boîtier
-
-Cibles :
+## 9.4. Fréquences cibles boîtier
 
 ```text
 IMU mouvement : 200 Hz
 IMU vibration : 200 à 400 Hz
-GNSS : 10 Hz ou davantage si la qualité reste bonne
+GNSS : 10 Hz ou plus si la qualité reste bonne
 Baromètre : 10 à 25 Hz
 Affichage : 5 à 10 Hz
 ```
 
-Privilégier la qualité et la stabilité à une fréquence GNSS maximale artificielle.
+Privilégier fiabilité, horodatage et qualité à une fréquence maximale artificielle.
 
 ---
 
-# 12. Fixation et calibration
+# 10. Fixation et calibration
 
-## 12.1. Règle générale
+Exiger une fixation stable, sans glissement ni oscillation propre notable. L’orientation exacte ne doit pas être reproduite grâce à la calibration.
 
-Exiger une fixation :
+Pour l’automobile, recommander une position proche de l’axe longitudinal central, idéalement entre les sièges avant ou sur la console centrale.
 
-- solide ;
-- stable ;
-- sans glissement ;
-- sans oscillation propre importante.
+Velcro industriel, scratch, colliers ou support court rigide conviennent aux analyses générales.
 
-Ne pas exiger une orientation exactement reproductible.
-
-## 12.2. Automobile
-
-Position recommandée : proche de l’axe longitudinal central du véhicule, idéalement entre les sièges avant ou sur la console centrale.
-
-Utiliser si besoin :
-
-- scratch ;
-- Velcro industriel ;
-- collier ;
-- support court et rigide.
-
-## 12.3. Calibration automatique
-
-À chaque montage :
+Calibration automatique :
 
 1. détecter l’immobilité ;
 2. estimer les biais ;
 3. utiliser la gravité pour déterminer la verticale ;
-4. utiliser le GNSS et les phases de déplacement pour déterminer l’axe longitudinal ;
+4. exploiter GNSS et phases de déplacement pour déterminer l’axe longitudinal ;
 5. reconstruire le repère de l’activité ;
-6. calculer une qualité de calibration ;
-7. conserver la matrice avec la session.
+6. produire une qualité de calibration ;
+7. conserver la matrice dans la session.
 
-Repère automobile :
-
-```text
-X = avant
-Y = latéral
-Z = vertical
-```
-
-## 12.4. Vibrations
-
-Indiquer que les analyses vibratoires fines nécessitent une fixation plus rigide et reproductible.
-
-Une fixation souple peut filtrer ou amplifier certaines fréquences.
+Pour les vibrations fines, signaler qu’une fixation plus rigide et reproductible est nécessaire.
 
 ---
 
-# 13. Architecture logicielle
+# 11. Stack V1 figée
 
-```text
-Sources physiques / fichiers
-          │
-          ▼
-SensorSource / ImportSource
-          │
-          ▼
-RAW store
-          │
-          ▼
-Normalisation
-          │
-          ▼
-Synchronisation temporelle
-          │
-          ▼
-DataFusionEngine
-          │
-          ▼
-Analytics Core
-          │
-          ▼
-Activity Analyzer
-          │
-          ▼
-Profiles / Segments / Comparisons
-          │
-          ▼
-UI
-```
-
----
-
-# 14. Technologies V1
-
-Application :
+## 11.1. Web
 
 - React ;
 - TypeScript strict ;
 - Vite ;
 - PWA ;
-- IndexedDB derrière une couche repository ;
-- Service Worker ;
-- WebAssembly pour le cœur analytique portable.
+- `pnpm` workspaces ;
+- IndexedDB derrière des repositories ;
+- OPFS pour les gros flux lorsque disponible ;
+- Service Worker via `vite-plugin-pwa` en mode `injectManifest` ;
+- WebAssembly pour le cœur analytique.
 
-Cœur analytique :
+## 11.2. Cœur analytique
 
 - C++ portable ;
-- compilation WebAssembly pour la PWA ;
-- compilation native ESP32 prévue sans réécriture du cœur.
+- CMake ;
+- Emscripten pour la compilation WebAssembly ;
+- CTest pour les tests C++ ;
+- voie de compilation native ESP32 sans réécriture du cœur.
 
-Importeurs et orchestration : TypeScript lorsque plus approprié.
+## 11.3. Firmware
+
+Utiliser ESP-IDF natif pour TrackAnalyser.
+
+## 11.4. Tests
+
+- Vitest pour TypeScript ;
+- React Testing Library pour UI ;
+- Playwright pour E2E Chromium et WebKit ;
+- CTest/CMake pour C++ ;
+- fixtures et replays déterministes ;
+- mocks explicites des capteurs et du stockage ;
+- tests réels iPhone pour les API capteurs impossibles à simuler fidèlement.
 
 ---
 
-# 15. Conventions de commentaires et de code
+# 12. Hébergement et CI/CD
+
+Hébergement V1 : **100 % GitHub Pages**.
+
+Utiliser GitHub Actions pour CI, build et déploiement.
+
+Déclenchements :
+
+- `pull_request` : lint, typecheck, tests, build ;
+- `push` vers `main` : CI complète puis déploiement si succès ;
+- `workflow_dispatch` : lancement manuel.
+
+Configurer Vite pour `/TrackAnalyser/`.
+
+Utiliser un routage compatible Pages, `HashRouter` en V1 afin de ne pas dépendre de réécritures serveur.
+
+Le déploiement ne doit jamais pouvoir interrompre une session active côté client.
+
+---
+
+# 13. PWA, cache et hot refresh
+
+Objectif : éviter qu’un iPhone conserve indéfiniment une ancienne version.
+
+Mettre en place :
+
+- assets hashés ;
+- manifeste de version distant ;
+- `APP_VERSION`, `BUILD_ID`, `GIT_COMMIT`, `SCHEMA_VERSION`, `ANALYSIS_VERSION` ;
+- vérification au lancement et au retour au premier plan si réseau disponible ;
+- téléchargement de la nouvelle version ;
+- activation contrôlée ;
+- invalidation des caches obsolètes ;
+- reload automatique uniquement lorsqu’aucune session active n’est en danger.
+
+Pendant une session active, différer obligatoirement la mise à jour jusqu’à persistance complète de la session.
+
+---
+
+# 14. Conventions de développement
 
 Commentaires :
 
 - en français ;
 - de préférence à l’infinitif ;
 - sinon style impersonnel ou troisième personne ;
-- expliquer ce que fait le code ;
-- expliquer comment il fonctionne ;
-- expliquer pourquoi lorsqu’un choix n’est pas évident ;
+- expliquer ce que fait le code, comment et pourquoi si nécessaire ;
 - ne pas utiliser de ton conversationnel ;
 - ne pas utiliser d’emoji ;
-- ne pas employer de formulations évoquant une génération par IA.
+- ne pas laisser de marqueurs évoquant une génération IA.
 
 Exemple :
 
 ```cpp
 // Convertir l'accélération brute depuis le repère du capteur
 // vers le repère calibré de l'équipement.
-// Conserver la valeur en m/s² afin d'éviter les conversions implicites.
+// Conserver les unités en m/s² afin d'éviter les conversions implicites.
 ```
 
-Ne pas ajouter de « mode IA » ou de branding IA dans l’interface.
+Ne pas créer de mode « IA » ni de branding IA dans le produit.
 
 ---
 
-# 16. UI/UX
-
-Direction :
-
-- moderne ;
-- premium ;
-- mobile-first ;
-- inspirée des conventions iOS ;
-- sobre ;
-- lisible ;
-- interactions simples ;
-- détails techniques accessibles progressivement ;
-- mode clair ;
-- mode sombre ;
-- respect du thème système.
-
-Ne pas utiliser d’emoji comme icônes fonctionnelles.
-
-Utiliser de vraies icônes vectorielles cohérentes.
-
-Navigation principale proposée :
-
-```text
-Accueil
-Sessions
-Comparer
-Profils
-Réglages
-```
-
----
-
-# 17. Création d’une session
-
-Flux :
-
-```text
-Nouvelle session
-      ↓
-Participant
-      ↓
-Activité
-      ↓
-Équipement éventuel
-      ↓
-Source(s)
-      ↓
-Qualité / calibration
-      ↓
-Démarrer
-```
-
-Préselectionner les derniers choix mais permettre leur modification.
-
----
-
-# 18. Écran temps réel
-
-Limiter l’information pendant une activité nécessitant de l’attention.
-
-Afficher principalement :
-
-- état d’enregistrement ;
-- participant ;
-- activité ;
-- équipement ;
-- durée ;
-- distance ;
-- une ou plusieurs métriques principales ;
-- état GNSS ;
-- état stockage ;
-- batterie si disponible.
-
-Ne pas imposer une consultation détaillée pendant la conduite, le pilotage ou le vol.
-
----
-
-# 19. Modèle de session
-
-Structure indicative :
+# 15. Modèle de session
 
 ```ts
 interface Session {
@@ -777,289 +522,274 @@ interface Session {
   endTime?: string
   calibration?: CalibrationSnapshot
   schemaVersion: number
-  analysisVersion: number
   rawDataReferences: RawDataReference[]
   normalizedDataReference?: string
   fusedDataReference?: string
-  derivedDataReference?: string
-  analysisReference?: string
+  analysisRunIds: string[]
+  originalAnalysisRunId?: string
+  latestAnalysisRunId?: string
 }
 ```
 
 ---
 
-# 20. RAW
+# 16. Historique et versionnement des analyses
 
-Conserver les données originales sans modification.
+Une réanalyse ne doit jamais écraser silencieusement un résultat antérieur.
 
-Exemple :
+Créer :
 
-```text
-raw/
-  tbeam/
-  iphone/
-  garmin/
-  apple-health/
-  heart-rate/
+```ts
+interface AnalysisRun {
+  id: string
+  sessionId: string
+  analysisVersion: string
+  analysisProfileVersion: string
+  engineBuildId: string
+  gitCommit?: string
+  createdAt: string
+  isOriginal: boolean
+  metricsReference: string
+  eventsReference: string
+  scoresReference?: string
+  qualityReference?: string
+}
 ```
+
+Règles :
+
+- conserver immuablement le premier résultat produit pour une session ;
+- conserver le résultat le plus récent ;
+- conserver l’historique des `AnalysisRun` ;
+- ne jamais altérer les RAW lors d’une réanalyse ;
+- permettre de comparer « analyse originale » et « analyse actuelle » ;
+- expliquer les changements de scores ou métriques entre versions ;
+- permettre, lorsque l’ancienne version du moteur reste disponible, de régénérer une analyse historique à partir du RAW ;
+- à défaut de conserver tous les anciens moteurs embarqués, conserver suffisamment de sorties et métadonnées pour restituer les résultats historiques sans ambiguïté.
+
+L’UI doit pouvoir afficher la version utilisée et signaler qu’une nouvelle analyse est disponible.
 
 ---
 
-# 21. NORMALIZED
+# 17. AnalysisProfile et seuils
 
-Normaliser :
+Les seuils physiques empiriques ne doivent pas être dispersés en constantes codées en dur.
 
-- unités ;
-- noms de champs ;
-- timestamps ;
-- repères d’axes ;
-- conventions de signe.
+Créer des `AnalysisProfile` versionnés par activité.
 
-Unités internes :
+Exemples de paramètres :
+
+- seuil accélération réelle ;
+- seuil freinage brutal ;
+- fenêtres de filtrage ;
+- seuil de correction latérale ;
+- détection thermique ;
+- seuils de qualité GNSS ;
+- fenêtres d’agrégation ;
+- critères de segmentation.
+
+Chaque `AnalysisRun` conserve la version du profil utilisée afin de garantir la reproductibilité.
+
+---
+
+# 18. Stockage chaud / tiède / froid
+
+## 18.1. Chaud
+
+Mémoire vive : buffers courts nécessaires à l’acquisition, aux calculs temps réel et à l’affichage.
+
+## 18.2. Tiède
+
+- OPFS pour les gros flux RAW/chunks lorsque disponible ;
+- IndexedDB pour métadonnées, index, participants, équipements, appareils, sessions, événements, analyses et références de chunks ;
+- fallback IndexedDB si OPFS indisponible.
+
+Ne pas stocker des heures d’IMU haute fréquence dans un gigantesque objet JSON.
+
+## 18.3. Froid
+
+Exports versionnés :
+
+- `.tatrip` pour une session ;
+- `.tabackup` pour sauvegarde complète.
+
+Conserver des formats documentés, inspectables et récupérables sans service propriétaire.
+
+---
+
+# 19. Normalisation
+
+Unités internes SI :
 
 ```text
 distance : m
 temps : s
 vitesse : m/s
 accélération : m/s²
-angles calcul : rad
+angles : rad en calcul interne
 altitude : m
 pression : Pa
 fréquence cardiaque : bpm
 puissance : W
 ```
 
----
+L’UI convertit selon les préférences.
 
-# 22. Synchronisation temporelle
+Par défaut : système métrique.
 
-Utiliser en priorité UTC.
-
-Affiner si nécessaire en comparant des événements communs :
-
-- départ ;
-- arrêt ;
-- accélération ;
-- freinage ;
-- virage ;
-- changements d’altitude ;
-- signatures communes.
-
-Conserver le décalage estimé et le niveau de confiance.
+Prévoir configuration d’unités pour autres pays et activités : km/h, mph, nœuds, ft, ft/min, °C/°F, etc.
 
 ---
 
-# 23. DataFusionEngine
+# 20. DataFusionEngine
 
 Responsabilités :
 
 1. recevoir plusieurs sources du même participant ;
 2. normaliser ;
-3. synchroniser ;
+3. synchroniser les horloges ;
 4. calculer la qualité de chaque canal ;
-5. sélectionner une source privilégiée par métrique ;
-6. fusionner lorsque cela est pertinent ;
-7. conserver les sources originales ;
+5. sélectionner la meilleure source par canal ;
+6. basculer de source lorsque la qualité le justifie ;
+7. conserver les séries originales ;
 8. conserver la provenance ;
-9. produire un flux unifié ;
-10. exposer les divergences entre sources.
+9. exposer les divergences ;
+10. produire un flux unifié.
+
+## 20.1. Stratégie de fusion
+
+La stratégie de référence est **priorité/qualité par canal**.
+
+Modes possibles :
+
+- `PRIORITY` : source explicitement prioritaire ;
+- `AUTO` : choisir la meilleure source selon qualité ;
+- `FUSION` : fusion mathématique uniquement lorsqu’elle est justifiée et validée ;
+- `PARALLEL` : conserver plusieurs séries en parallèle.
+
+Ne jamais moyenner naïvement plusieurs altitudes, vitesses ou positions.
+
+Une fusion Kalman universelle n’est pas un objectif de V1 et ne doit pas être imposée si elle réduit l’explicabilité ou la fiabilité.
 
 ---
 
-# 24. Source de vérité par canal
+# 21. Synchronisation temporelle
 
-Ne pas définir une source unique pour toute la session.
+Utiliser UTC en priorité.
 
-Exemple :
+Affiner si nécessaire avec des événements communs : départ, arrêt, accélération, virage, variations d’altitude ou signatures communes.
 
-```text
-Position                 T-Beam
-Altitude                 T-Beam barométrique
-IMU                      T-Beam
-Fréquence cardiaque      ceinture cardio
-Cadence course           Garmin
-Longueur de foulée       Garmin
-Puissance vélo           capteur puissance
-```
+Conserver :
+
+- offset estimé ;
+- méthode ;
+- confiance ;
+- dérive éventuelle.
 
 ---
 
-# 25. Données dupliquées
+# 22. Provenance et qualité
 
-Prévoir quatre stratégies :
+Toute métrique importante doit exposer :
 
-## PRIORITY
-
-Utiliser une source choisie explicitement.
-
-## AUTO
-
-Choisir la meilleure source en fonction de sa qualité.
-
-## FUSION
-
-Fusionner mathématiquement lorsque la méthode est justifiée.
-
-## PARALLEL
-
-Conserver les séries séparément pour contrôle ou comparaison.
-
-Ne jamais moyenner naïvement plusieurs capteurs.
-
----
-
-# 26. Provenance
-
-Toute métrique importante doit pouvoir indiquer :
-
-- source ;
-- fichier ;
-- appareil ;
+- source/appareil ;
+- fichier éventuel ;
+- canal ;
 - nombre d’échantillons ;
 - couverture ;
 - qualité ;
-- méthode de calcul ;
-- version de l’algorithme.
+- méthode ;
+- version du moteur ;
+- version du profil d’analyse.
+
+La qualité de session doit inclure au minimum : GNSS, IMU, horloge, calibration, couverture, fusion et confiance.
 
 ---
 
-# 27. Contrôle qualité multi-capteurs
+# 23. Import V1
 
-Comparer les sources lorsqu’elles mesurent la même grandeur.
-
-Exemple :
-
-```text
-Distance ESP32 : 21,42 km
-Distance Garmin : 21,71 km
-Écart : 1,35 %
-```
-
-Signaler les écarts inhabituels.
-
----
-
-# 28. Importeurs V1
-
-Implémenter :
+Formats obligatoires :
 
 - FIT ;
 - GPX ;
 - TCX ;
 - JSON TrackAnalyser ;
-- package `.tatrip` ;
-- backup `.tabackup` ;
-- Apple Health export lorsque fourni sous forme de données exportables, avec prise en charge au minimum des entraînements, fréquence cardiaque, distance, durée, altitude et routes disponibles.
+- `.tatrip` ;
+- `.tabackup` ;
+- exports Apple Health/Apple Watch exploitables sous forme de fichiers, sans accès HealthKit direct depuis la PWA.
 
-Pour Apple Watch, ne pas dépendre d’un accès direct HealthKit depuis la PWA.
-
-Permettre l’import d’un export Apple Health ou d’un FIT/GPX/TCX produit par un outil compatible.
+V1.1 peut enrichir l’import Apple Health ZIP/XML si nécessaire.
 
 ---
 
-# 29. Assistant d’import V1
+# 24. FIT Garmin — exigences V1
 
-Étapes UI obligatoires :
+Utiliser le SDK/profil FIT officiel Garmin comme référence de décodage.
 
-1. sélectionner le fichier ;
-2. analyser le format ;
-3. afficher les types de données trouvés ;
-4. choisir le participant cible ;
-5. proposer les sessions correspondantes uniquement pour ce participant ;
-6. choisir enrichissement ou nouvelle session ;
-7. afficher les données qui seront ajoutées ;
-8. choisir les priorités en cas de doublons si nécessaire ;
-9. effectuer la fusion ;
-10. afficher un rapport de fusion.
+Règles :
 
----
+- conserver le fichier FIT binaire original dans RAW ou dans une référence d’import persistante ;
+- décoder toutes les données définies par le profil FIT pris en charge ;
+- conserver les Developer Data Fields ;
+- conserver les messages et champs inconnus ou privés de façon opaque lorsque leur décodage métier n’est pas disponible ;
+- ne jamais jeter une donnée uniquement parce que TrackAnalyser ne sait pas encore l’exploiter ;
+- stocker numéro de message global, numéro de champ, type brut, valeur brute et contexte nécessaires à une réinterprétation future ;
+- mettre à jour le profil FIT sans invalider les anciens imports ;
+- séparer le décodage brut du mapping vers les `MetricChannel` TrackAnalyser.
 
-# 30. Exemple multi-participant obligatoire à couvrir par tests
+## 24.1. Fixture réelle fournie
 
-Scénario :
+Le fichier utilisateur `24048447957_ACTIVITY.fit` doit être utilisé comme fixture réelle de course à pied lorsqu’il est présent dans le dépôt de tests.
 
-- Damien et Claire effectuent ensemble la même randonnée ;
-- Damien porte l’ESP32 ;
-- Damien dispose d’une Garmin Enduro 2 ;
-- Claire dispose de sa propre montre ou Apple Watch ;
-- les traces et horaires sont presque identiques.
+Constats sur ce fichier :
 
-Résultat attendu :
+- taille approximative : 122 ko ;
+- activité nommée « Course à pied » ;
+- 1 319 messages `record` ;
+- présence de position GNSS ;
+- fréquence cardiaque ;
+- cadence ;
+- distance ;
+- puissance de course ;
+- vitesse et altitude enrichies ;
+- métriques de dynamique de course telles que oscillation verticale, temps de contact au sol, ratio vertical, équilibre du temps de contact et longueur de pas lorsque les champs sont interprétables par le profil ;
+- présence de nombreux messages Garmin additionnels, dont certains privés/non documentés dans le profil public.
 
-```text
-ActivityGroup : randonnée commune
-│
-├── Session Damien
-│   ├── ESP32
-│   └── Garmin Enduro 2
-│
-└── Session Claire
-    └── Apple Watch
-```
-
-Ne jamais fusionner les données physiologiques de Claire dans la session Damien ou inversement.
-
-Permettre ensuite :
-
-```text
-Comparer Damien / Claire
-sur la même sortie
-```
+Ce fichier impose un test de non-régression : l’import doit conserver l’intégralité du contenu même lorsque certaines données ne sont pas encore exposées dans l’UI.
 
 ---
 
-# 31. Export d’une session
+# 25. Export
 
-Prévoir :
+## 25.1. Résumé JSON
 
-## Résumé JSON
+Lisible humainement, adapté à l’archivage et à des traitements externes.
 
-Lisible humainement.
-
-## CSV
+## 25.2. CSV
 
 Pour tableur, Python ou R.
 
-## Package `.tatrip`
+## 25.3. `.tatrip`
 
-ZIP versionné contenant :
+ZIP versionné contenant par exemple :
 
 ```text
 manifest.json
 session.json
 summary.json
 events.json
+analysis/
 raw/
 normalized/
 fused/
 derived/
 ```
 
----
+Les gros flux peuvent être binaires/chunkés ; NDJSON reste possible lorsqu’il apporte lisibilité et streaming.
 
-# 32. Stockage haute fréquence
+## 25.4. `.tabackup`
 
-Ne pas stocker plusieurs heures d’IMU dans un énorme tableau JSON.
-
-Utiliser :
-
-- chunks ;
-- NDJSON compressé ;
-- ou format binaire ouvert et documenté si nécessaire.
-
-Favoriser la pérennité, l’exportabilité et la possibilité de récupération sans service propriétaire.
-
----
-
-# 33. Backup complet
-
-Extension :
-
-```text
-.tabackup
-```
-
-Contenir au minimum :
+Contenir :
 
 ```text
 manifest.json
@@ -1074,41 +804,164 @@ profiles/
 statistics/
 ```
 
-Permettre de restaurer l’état complet sur une nouvelle installation.
+Permettre restauration complète sur une nouvelle installation.
 
 ---
 
-# 34. Versionnement
+# 26. Cartographie
 
-Conserver :
+Utiliser **MapLibre GL JS** avec fournisseurs de cartes interchangeables.
+
+V1 :
+
+- carte standard libre basée sur OSM ou source compatible ;
+- source topo de type OpenTopoMap lorsque ses conditions techniques le permettent ;
+- architecture permettant d’ajouter une source IGN/Géoplateforme ou autre sans coupler le domaine à un fournisseur ;
+- possibilité de basculer entre styles/sources lorsque disponible ;
+- relief/topographie lorsque la source fournit les données nécessaires.
+
+V1.1 :
+
+- mode cartographique hors ligne ;
+- privilégier PMTiles pour packs locaux vectoriels/raster ;
+- prévoir support terrain/DEM lorsque disponible ;
+- gestion du stockage des cartes séparée du stockage des sessions.
+
+L’absence de cartes hors ligne V1.0 ne doit jamais empêcher l’enregistrement et l’analyse offline.
+
+---
+
+# 27. UI/UX générale
+
+Direction :
+
+- moderne ;
+- premium ;
+- mobile-first ;
+- inspirée des conventions iOS ;
+- sobre ;
+- lisible ;
+- interactions simples ;
+- mode clair/sombre/système ;
+- vraie iconographie vectorielle ;
+- aucune interface ressemblant à un écran de télémétrie brut par défaut.
+
+Navigation principale proposée :
 
 ```text
-schemaVersion
-appVersion
-buildId
-gitCommit
-analysisVersion
-createdAt
+Accueil
+Sessions
+Comparer
+Profils
+Réglages
 ```
 
-Implémenter les migrations de schéma.
+UI V1 en français.
+
+Toutes les chaînes doivent être externalisées dès la V1 afin d’ajouter l’anglais en V1.1 sans refonte.
 
 ---
 
-# 35. Recalcul historique
+# 28. Visualisation analytique — exigence V1
 
-Séparer strictement :
+Sur iPhone, les valeurs brutes ne doivent jamais constituer la seule représentation principale d’une métrique.
 
-- mesures originales ;
-- données fusionnées ;
-- métriques calculées ;
-- scores.
+Chaque métrique doit disposer d’une représentation visuelle cohérente avec sa nature.
 
-Permettre de recalculer une ancienne session avec une nouvelle `analysisVersion`.
+Créer un registre `VisualizationSpec` indépendant des écrans :
+
+```ts
+interface VisualizationSpec {
+  metricId: string
+  semanticType: string
+  preferredLiveView: VisualizationType
+  preferredSessionView: VisualizationType
+  preferredComparisonView: VisualizationType
+  unitPolicy: string
+  scalePolicy: ScalePolicy
+  referenceZones?: ReferenceZone[]
+}
+```
+
+## 28.1. Types de visualisations
+
+Prévoir au minimum :
+
+- cartes de synthèse avec valeur, unité, tendance et sparkline ;
+- jauges circulaires ou semi-circulaires pour valeurs bornées ou instantanées ;
+- jauges divergentes pour valeurs signées autour de zéro ;
+- courbes temporelles ;
+- profils distance/temps ;
+- histogrammes et distributions ;
+- barres comparatives et dumbbell charts ;
+- nuages de points pour corrélations ;
+- cartes de parcours colorées par métrique ;
+- profil d’altitude synchronisé avec la carte ;
+- heatmaps lorsque pertinentes ;
+- graphiques de segments/événements ;
+- éventuel radar uniquement pour quelques scores synthétiques, jamais pour masquer les valeurs physiques.
+
+## 28.2. Règles d’échelle
+
+Les échelles doivent être cohérentes, lisibles et non trompeuses.
+
+- utiliser la même échelle lorsqu’on compare deux séries équivalentes ;
+- afficher zéro lorsque sa présence est sémantiquement nécessaire ;
+- utiliser des échelles divergentes centrées sur zéro pour roulis, tangage, accélération latérale ou vario signé lorsqu’approprié ;
+- utiliser des plages physiques ou de référence documentées pour les jauges ;
+- permettre une échelle dynamique avec marge lorsque cela améliore la lecture sans fausser la comparaison ;
+- afficher unités, min/max et zones de référence ;
+- ne pas utiliser uniquement la couleur pour transmettre une information ;
+- conserver une palette accessible et cohérente entre écrans.
+
+## 28.3. Temps réel
+
+Le pipeline de calcul conserve sa fréquence native ; l’UI est rafraîchie à une cadence raisonnable, typiquement 5 à 10 Hz, afin de rester fluide et économe.
+
+Exemples :
+
+- vitesse : valeur principale + mini-courbe récente ;
+- accélération longitudinale : jauge signée + historique court ;
+- accélération latérale : jauge signée ;
+- moto : inclinaison gauche/droite avec jauge centrée ;
+- parapente : vario signé + altitude + trace ;
+- course : allure + FC + cadence sous forme de cartes/courbes ;
+- bateau : roulis/tangage en jauges signées avec agitation récente.
+
+Pendant conduite/pilotage, limiter le nombre d’éléments et maximiser la lisibilité.
+
+## 28.4. Analyse d’une session
+
+Présenter une synthèse visuelle avant les détails techniques :
+
+- carte ;
+- chronologie ;
+- altitude ;
+- vitesse/allure ;
+- métriques spécifiques activité ;
+- événements ;
+- distributions ;
+- scores explicables ;
+- qualité/provenance accessible par détail.
+
+Les tableaux de données brutes doivent être réservés à une vue technique avancée.
+
+## 28.5. Comparaison
+
+Utiliser des graphiques permettant une comparaison immédiate :
+
+- axes et unités communs ;
+- courbes superposées ou juxtaposées ;
+- différences absolues et relatives ;
+- distributions ;
+- intervalles/percentiles ;
+- nombre d’événements comparables ;
+- couverture et confiance ;
+- synchronisation par temps, distance, segment ou événement.
 
 ---
 
-# 36. CoreMetrics
+# 29. CoreMetrics
 
 Calculer lorsque les données existent :
 
@@ -1119,534 +972,181 @@ Calculer lorsque les données existent :
 - jerk ;
 - vitesse verticale ;
 - altitude ;
-- dénivelé positif ;
-- dénivelé négatif ;
+- D+ ;
+- D- ;
 - pente ;
 - roulis ;
 - tangage ;
 - lacet ;
 - taux de rotation ;
-- accélération longitudinale ;
-- accélération latérale ;
-- accélération verticale ;
+- accélérations longitudinale, latérale et verticale ;
 - RMS ;
 - variance ;
 - percentiles ;
 - événements génériques.
 
----
+Statistiques possibles : moyenne, médiane, min, max, P50, P90, P95, P99, RMS, variance, écart-type, fréquence, durée, valeur/km, valeur/minute.
 
-# 37. Statistiques
-
-Prévoir selon les métriques :
-
-- moyenne ;
-- médiane ;
-- minimum ;
-- maximum ;
-- P50 ;
-- P90 ;
-- P95 ;
-- P99 ;
-- RMS ;
-- variance ;
-- écart-type ;
-- fréquence ;
-- durée ;
-- valeur/km ;
-- valeur/minute.
-
-Ne pas utiliser les maxima seuls comme indicateurs principaux.
+Ne pas utiliser le maximum seul comme métrique principale lorsqu’il peut être dominé par un artefact.
 
 ---
 
-# 38. Segments et événements
+# 30. Segments, événements et ComparableContext
 
-Permettre :
+Permettre segmentation automatique et manuelle, reconnaissance de portions GPS et comparaison d’événements similaires.
 
-- segmentation automatique ;
-- segmentation manuelle ;
-- reconnaissance de portions GPS ;
-- comparaison d’un même segment ;
-- comparaison d’événements similaires.
+Exemples : même montée, même virage, même descente, même thermique, même transition.
 
-Exemples :
-
-- même montée ;
-- même virage ;
-- même portion droite ;
-- même descente ;
-- même thermique ;
-- même transition.
+`ComparableContext` décrit les conditions d’une comparaison équitable : type, pente, rayon, vitesse, durée, altitude, qualité, etc.
 
 ---
 
-# 39. ComparableContext
-
-Décrire les conditions nécessaires à une comparaison équitable.
-
-Exemple automobile :
-
-```text
-virage
-rayon 80–120 m
-vitesse entrée 45–55 km/h
-pente ±2 %
-```
-
-Exemple trail :
-
-```text
-montée
-pente 10–15 %
-longueur > 200 m
-```
-
-Exemple parapente :
-
-```text
-thermique
-ascendance moyenne 1–2 m/s
-```
-
----
-
-# 40. Profils statistiques
+# 31. Profils statistiques
 
 Maintenir progressivement :
 
-- `ParticipantProfile`
-- `EquipmentProfile`
-- `ParticipantEquipmentProfile`
-- `SegmentProfile`
-- `DeviceQualityProfile`
-- `ActivityProfile`
+- `ParticipantProfile` ;
+- `EquipmentProfile` ;
+- `ParticipantEquipmentProfile` ;
+- `SegmentProfile` ;
+- `DeviceQualityProfile` ;
+- `ActivityProfile`.
+
+Les profils agrègent plusieurs sessions sans supprimer les sessions originales.
 
 ---
 
-# 41. Scores
+# 32. GenericAnalyzer — V1
 
-Les scores doivent être explicables.
-
-Un score doit toujours permettre d’afficher les métriques physiques qui l’ont produit.
-
-Ne jamais remplacer les valeurs physiques par un score opaque.
+Analyser selon les capteurs disponibles : temps, position, distance, altitude, vitesse, vitesse verticale, accélérations, rotations, D+/D-, pente, cardio, cadence, puissance et événements génériques.
 
 ---
 
-# 42. GenericAnalyzer — V1 obligatoire
-
-Analyser selon les capteurs disponibles :
-
-- temps ;
-- position ;
-- distance ;
-- altitude ;
-- vitesse ;
-- vitesse verticale ;
-- accélérations ;
-- rotations ;
-- D+ ;
-- D- ;
-- pente ;
-- cardio ;
-- cadence ;
-- puissance ;
-- événements génériques.
-
-Permettre la réanalyse ultérieure par un analyseur spécialisé.
-
----
-
-# 43. CarAnalyzer — V1 obligatoire
+# 33. CarAnalyzer — V1
 
 ## Vitesse
 
-- moyenne totale ;
-- moyenne roulante ;
-- médiane ;
-- maximum ;
-- temps par plage.
+Moyenne totale, moyenne roulante, médiane, maximum, temps par plage.
 
 ## Accélération
 
-- phases réelles ;
-- durée ;
-- moyenne ;
-- P95 ;
-- maximum ;
-- jerk.
+Détecter les phases réelles et calculer durée, moyenne, P95, maximum et jerk.
 
 ## Freinage
 
-- nombre ;
-- décélération ;
-- progressivité ;
-- freinages brusques ;
-- freinages tardifs ;
-- jerk.
+Nombre, décélération, progressivité, freinages brusques/tardifs et jerk.
 
 ## Stabilité de trajectoire
 
-Sur portions adaptées :
-
-- yaw RMS ;
-- variance ;
-- inversions gauche/droite ;
-- amplitude des corrections ;
-- corrections/km ;
-- jerk latéral.
+Sur portions adaptées : yaw RMS, variance, inversions gauche/droite, amplitude des corrections, corrections/km, jerk latéral.
 
 Ne pas prétendre mesurer la position exacte dans la voie sans système adapté.
 
 ## Virages
 
-- vitesse entrée ;
-- vitesse minimale ;
-- vitesse sortie ;
-- accélération latérale ;
-- yaw ;
-- jerk ;
-- roulis ;
-- freinage ;
-- reprise.
+Vitesse entrée/minimum/sortie, accélération latérale, yaw, jerk, roulis, freinage et reprise.
 
-## Roulis et tangage
+## Roulis/tangage
 
-- amplitude ;
-- vitesse de prise ;
-- plongée ;
-- cabrage ;
-- retour ;
-- oscillation ;
-- stabilisation.
+Amplitude, vitesse de prise, plongée, cabrage, retour, oscillations et stabilisation.
 
-## Scores
-
-- fluidité ;
-- stabilité ;
-- freinage ;
-- anticipation ;
-- virages ;
-- régularité ;
-- dynamisme.
+Scores séparés : fluidité, stabilité, freinage, anticipation, virages, régularité, dynamisme.
 
 ---
 
-# 44. MotorcycleAnalyzer — V1 obligatoire
+# 34. MotorcycleAnalyzer — V1
 
-Métriques :
+Vitesse, accélération, reprise, freinage, jerk, virages, angle d’inclinaison, angle maximal, vitesse de mise sur l’angle, temps sur l’angle, redressement, symétrie gauche/droite, accélération en sortie, régularité et stabilité.
 
-- vitesse ;
-- accélération ;
-- reprise ;
-- freinage ;
-- jerk ;
-- virages ;
-- angle d’inclinaison ;
-- angle maximal ;
-- vitesse de mise sur l’angle ;
-- temps sur l’angle ;
-- redressement ;
-- symétrie gauche/droite ;
-- accélération en sortie ;
-- régularité ;
-- stabilité de trajectoire.
-
-Tenir compte de la dynamique spécifique de la moto lors de l’estimation du roulis.
+Tenir compte de la dynamique propre à la moto lors de l’estimation du roulis.
 
 ---
 
-# 45. BikeAnalyzer — V1 obligatoire
+# 35. BikeAnalyzer — V1
 
-Métriques :
+Distance, vitesse, altitude, D+/D-, pente, vitesse ascensionnelle/descente, accélération, ralentissement, virages, inclinaison, vibrations, régularité.
 
-- distance ;
-- vitesse ;
-- altitude ;
-- D+ ;
-- D- ;
-- pente ;
-- vitesse ascensionnelle ;
-- vitesse de descente ;
-- accélération ;
-- ralentissement ;
-- virages ;
-- inclinaison ;
-- vibrations ;
-- régularité.
-
-Ajouter si disponibles :
-
-- fréquence cardiaque ;
-- cadence ;
-- puissance ;
-- température ;
-- métriques externes.
+Ajouter cardio, cadence, puissance, température et métriques externes si disponibles.
 
 ---
 
-# 46. HikingAnalyzer — V1 obligatoire
+# 36. HikingAnalyzer — V1
 
-Métriques :
+Distance, temps total, temps en mouvement, pauses, vitesse, allure, altitude, D+/D-, pente, vitesse ascensionnelle/descente, temps par pente, régularité.
 
-- distance ;
-- temps total ;
-- temps en mouvement ;
-- pauses ;
-- vitesse ;
-- allure ;
-- altitude ;
-- D+ ;
-- D- ;
-- pente ;
-- vitesse ascensionnelle ;
-- vitesse de descente ;
-- répartition du temps par pente ;
-- régularité.
-
-Ajouter si disponibles :
-
-- fréquence cardiaque ;
-- cadence de pas ;
-- longueur de foulée ;
-- température ;
-- données Garmin/Apple Health.
+Ajouter cardio, cadence de pas, longueur de foulée, température et données importées.
 
 ---
 
-# 47. TrailRunningAnalyzer — V1 obligatoire
+# 37. TrailRunningAnalyzer — V1
 
-Étendre les métriques randonnée avec :
+Étendre Hiking avec allure en mouvement, cadence, longueur de foulée, FC, puissance si disponible, vitesse ascensionnelle, efficacité montée/descente, segments de pente, régularité, pauses et Running Dynamics.
 
-- allure en mouvement ;
-- allure ajustée par pente si la méthode est documentée ;
-- cadence ;
-- longueur de foulée ;
-- fréquence cardiaque ;
-- puissance si disponible ;
-- vitesse ascensionnelle ;
-- efficacité en montée ;
-- efficacité en descente ;
-- comparaison par segments de pente ;
-- régularité ;
-- pauses ;
-- dynamique de course lorsque disponible dans les imports.
+Toute allure ajustée à la pente doit utiliser une méthode documentée et versionnée.
 
 ---
 
-# 48. RunningAnalyzer — V1 obligatoire
+# 38. RunningAnalyzer — V1
 
-Métriques :
+Distance, durée, allure, vitesse, splits, régularité, cadence, longueur de foulée, fréquence cardiaque, puissance, D+/D- et métriques de course disponibles.
 
-- distance ;
-- durée ;
-- allure ;
-- vitesse ;
-- splits ;
-- régularité ;
-- cadence ;
-- longueur de foulée ;
-- fréquence cardiaque ;
-- puissance si disponible ;
-- D+ ;
-- D- ;
-- métriques de course supplémentaires si présentes dans la source.
-
-Permettre la comparaison de deux participants sur le même parcours ou la même séance.
+Permettre comparaison entre participants sur même séance ou parcours.
 
 ---
 
-# 49. BoatAnalyzer — V1 obligatoire
+# 39. BoatAnalyzer — V1
 
-Métriques :
+Vitesse fond, cap, stabilité du cap, accélérations, roulis, tangage, lacet, mouvements verticaux, impacts, vibrations, fréquence des oscillations.
 
-- vitesse fond ;
-- cap ;
-- stabilité du cap ;
-- accélérations ;
-- roulis ;
-- tangage ;
-- lacet ;
-- mouvements verticaux ;
-- impacts ;
-- vibrations ;
-- fréquence des oscillations.
+Indicateurs : agitation rencontrée, stabilité, réponse du bateau, confort dynamique.
 
-Créer des indicateurs :
-
-- agitation rencontrée ;
-- stabilité ;
-- réponse du bateau ;
-- confort dynamique.
-
-Ne pas présenter l’agitation comme une hauteur de vague scientifique.
+Ne pas présenter l’agitation comme hauteur de vague scientifique sans capteur adapté.
 
 ---
 
-# 50. ParaglidingAnalyzer — V1 obligatoire
+# 40. ParaglidingAnalyzer — V1
 
-## Phases
+Détecter : décollage, transition, thermique, descente, approche, atterrissage.
 
-Détecter :
+Variométrie : instantané, moyenne, min/max, temps ascendant/descendant.
 
-- décollage ;
-- transition ;
-- thermique ;
-- descente ;
-- approche ;
-- atterrissage.
+Thermiques : entrée/sortie, altitudes, gain, durée, ascendance moyenne/max, rayon, sens, nombre de tours, efficacité de centrage.
 
-## Variométrie
+Finesse sol : distance horizontale / altitude perdue.
 
-- vario instantané ;
-- moyenne ;
-- maximum ;
-- minimum ;
-- temps ascendant ;
-- temps descendant.
+Ne pas qualifier la finesse d’aérodynamique tant que le vent n’est pas corrigé.
 
-## Thermiques
-
-Calculer :
-
-- entrée ;
-- sortie ;
-- altitude entrée ;
-- altitude sortie ;
-- gain ;
-- durée ;
-- ascendance moyenne ;
-- ascendance maximale ;
-- rayon moyen ;
-- sens de rotation ;
-- nombre de tours ;
-- efficacité de centrage.
-
-## Finesse
-
-Calculer la finesse sol :
-
-```text
-distance horizontale / altitude perdue
-```
-
-Ne pas appeler cette valeur finesse aérodynamique tant que le vent n’est pas corrigé.
-
-## Données physiologiques
-
-Permettre de corréler les données de vol avec :
-
-- fréquence cardiaque ;
-- autres données importées.
+Permettre corrélation avec données physiologiques importées.
 
 ---
 
-# 51. AircraftAnalyzer — V1 obligatoire
+# 41. AircraftAnalyzer — V1
 
-Métriques :
+Vitesse sol, altitude, montée/descente, roulis, tangage, lacet, accélérations, virages, stabilité, vibrations.
 
-- vitesse sol ;
-- altitude ;
-- montée ;
-- descente ;
-- roulis ;
-- tangage ;
-- lacet ;
-- accélérations ;
-- virages ;
-- stabilité ;
-- vibrations.
+Détecter autant que possible taxi, décollage, montée, croisière, virage, descente, approche et atterrissage.
 
-Détecter autant que possible :
-
-- taxi ;
-- décollage ;
-- montée ;
-- croisière ;
-- virage ;
-- descente ;
-- approche ;
-- atterrissage.
-
-Afficher clairement que TrackAnalyser n’est pas un instrument certifié de navigation ou de pilotage.
+TrackAnalyser n’est pas un instrument certifié et ne doit pas être utilisé comme source de navigation ou de pilotage.
 
 ---
 
-# 52. Comparaison
+# 42. Comparaison
 
 Permettre :
 
 - même participant, même équipement, même parcours ;
 - participants différents, même équipement ;
 - même participant, équipements différents ;
-- participants différents sur la même sortie ;
-- sessions différentes mais événements comparables ;
-- même segment dans le temps.
+- participants différents dans le même `ActivityGroup` ;
+- sessions différentes avec événements comparables ;
+- même segment dans le temps ;
+- même session analysée avec deux versions de moteur.
 
-Pour une sortie partagée, utiliser l’`ActivityGroup` afin de comparer les sessions individuelles sans mélanger leurs données.
-
----
-
-# 53. UI de comparaison multi-participant
-
-Permettre :
-
-```text
-Comparer
-
-Sortie : Randonnée du 21 août
-
-Participant A : Damien
-Participant B : Claire
-
-Même parcours : oui
-Durée comparable : oui
-
-[Comparer]
-```
-
-Afficher :
-
-- valeurs ;
-- écarts absolus ;
-- écarts relatifs ;
-- distributions ;
-- couverture des capteurs ;
-- qualité ;
-- nombre d’événements comparables.
+Afficher valeurs, écarts absolus/relatifs, distributions, couverture, qualité et nombre d’événements comparables.
 
 ---
 
-# 54. PWA V1
-
-La V1 doit être réellement utilisable sans boîtier.
-
-Fonctions obligatoires :
-
-- installation PWA ;
-- iOS ;
-- architecture compatible Android ;
-- offline ;
-- création de participants ;
-- création d’équipements ;
-- profils d’appareils ;
-- enregistrement ;
-- historique ;
-- comparaison ;
-- import ;
-- fusion ;
-- export ;
-- backup ;
-- restauration ;
-- diagnostics capteurs ;
-- toutes les activités V1.
-
----
-
-# 55. SensorSource
-
-Interface indicative :
+# 43. SensorSource
 
 ```ts
 interface SensorSource {
@@ -1657,50 +1157,17 @@ interface SensorSource {
 }
 ```
 
-Implémenter V1 :
+V1 :
 
 - `PhoneMotionSensorSource`
 - `PhoneLocationSensorSource`
 - `ImportedFileSource`
 
-Prévoir sans refonte :
-
-- `RemoteDeviceSource`
+Prévoir sans refonte : `RemoteDeviceSource`.
 
 ---
 
-# 56. Stockage PWA
-
-Utiliser des repositories dédiés.
-
-Exemples :
-
-- `SessionRepository`
-- `ParticipantRepository`
-- `ActivityGroupRepository`
-- `EquipmentRepository`
-- `DeviceRepository`
-- `RawChunkRepository`
-
-Ne pas disperser directement les appels IndexedDB dans l’UI.
-
----
-
-# 57. Résilience
-
-Enregistrer par chunks.
-
-Créer des checkpoints.
-
-Permettre de récupérer une session interrompue lorsque possible.
-
-Une panne de l’interface ne doit pas détruire toute la session.
-
-Sur boîtier, écrire progressivement sur le stockage.
-
----
-
-# 58. Communication futur boîtier
+# 44. Communication futur boîtier
 
 Ne pas dépendre de Web Bluetooth sur iOS.
 
@@ -1716,251 +1183,31 @@ WebSocket / HTTP
 PWA
 ```
 
-Versionner le protocole.
-
-Messages prévus :
-
-- `HELLO`
-- `DEVICE_INFO`
-- `CAPABILITIES`
-- `START_SESSION`
-- `STOP_SESSION`
-- `LIVE_SAMPLE`
-- `SESSION_LIST`
-- `SESSION_DOWNLOAD`
-- `SYNC_STATUS`
-- `TIME_SYNC`
+Protocole versionné avec au minimum : `HELLO`, `DEVICE_INFO`, `CAPABILITIES`, `START_SESSION`, `STOP_SESSION`, `LIVE_SAMPLE`, `SESSION_LIST`, `SESSION_DOWNLOAD`, `SYNC_STATUS`, `TIME_SYNC`.
 
 ---
 
-# 59. Écran boîtier
+# 45. Écran boîtier
 
-Afficher au minimum :
+Afficher au minimum participant, activité, équipement, état d’enregistrement, durée, distance, métrique principale, GNSS, stockage et batterie.
 
-- participant ;
-- activité ;
-- équipement ;
-- enregistrement ;
-- durée ;
-- distance ;
-- métrique principale ;
-- GNSS ;
-- stockage ;
-- batterie.
-
-À la fin :
-
-- résumé ;
-- métriques principales ;
-- comparaison simple éventuelle.
+Après arrêt : résumé et métriques principales, éventuellement comparaison simple avec profil/dernière session.
 
 ---
 
-# 60. Pipeline GitHub
+# 46. Résilience
 
-Workflow de développement :
+Écrire progressivement.
 
-```text
-feature branch
-      ↓
-commits
-      ↓
-push
-      ↓
-pull request
-      ↓
-tests
-      ↓
-merge main
-      ↓
-build
-      ↓
-deploy
-```
+Utiliser chunks et checkpoints.
 
-Éviter le développement direct sur `main` hors bootstrap initial d’un dépôt vide.
+Une panne UI ne doit pas détruire une session complète.
+
+Prévoir récupération de session interrompue et reprise de synchronisation.
 
 ---
 
-# 61. Version et build
-
-Générer :
-
-- `APP_VERSION`
-- `BUILD_ID`
-- `GIT_COMMIT`
-- `SCHEMA_VERSION`
-- `ANALYSIS_VERSION`
-
-Afficher ces informations dans une page technique.
-
----
-
-# 62. Hot refresh et invalidation de cache
-
-Objectif : éviter qu’une ancienne version PWA reste utilisée après un déploiement.
-
-Mettre en place :
-
-- assets hashés ;
-- manifeste de version distant ;
-- détection d’un nouveau build ;
-- mise à jour Service Worker ;
-- invalidation des anciens caches ;
-- activation contrôlée ;
-- reload automatique lorsque sûr.
-
-Ne jamais recharger pendant une session active.
-
-Si une version arrive pendant l’enregistrement :
-
-```text
-Nouvelle version disponible
-Mise à jour après la session
-```
-
-Après sauvegarde complète : appliquer puis recharger.
-
----
-
-# 63. Qualité du code
-
-Exiger :
-
-- TypeScript strict ;
-- C++ portable documenté ;
-- modules cohérents ;
-- dépendances limitées ;
-- gestion explicite des erreurs ;
-- logs structurés ;
-- tests unitaires ;
-- tests d’intégration ;
-- tests de replay ;
-- migrations testées ;
-- pas de duplication majeure.
-
----
-
-# 64. Structure de dépôt recommandée
-
-```text
-TrackAnalyser/
-│
-├── apps/
-│   └── web/
-│
-├── packages/
-│   ├── domain/
-│   ├── storage/
-│   ├── sensors/
-│   ├── importers/
-│   ├── exporters/
-│   ├── fusion/
-│   └── ui/
-│
-├── core/
-│   └── analytics/
-│       ├── cpp/
-│       └── wasm/
-│
-├── firmware/
-│   ├── common/
-│   ├── tbeam/
-│   └── waveshare/
-│
-├── tests/
-│   ├── fixtures/
-│   ├── replay/
-│   └── integration/
-│
-└── docs/
-    ├── architecture/
-    ├── data-format/
-    ├── protocol/
-    └── metrics/
-```
-
----
-
-# 65. Documentation technique obligatoire
-
-Créer au minimum :
-
-```text
-docs/architecture/overview.md
-docs/architecture/multi-participant.md
-docs/architecture/data-fusion.md
-
-docs/data-format/session.md
-docs/data-format/raw-data.md
-docs/data-format/import-export.md
-docs/data-format/backup.md
-
-docs/protocol/remote-device.md
-
-docs/metrics/core.md
-docs/metrics/car.md
-docs/metrics/motorcycle.md
-docs/metrics/bike.md
-docs/metrics/hiking.md
-docs/metrics/trail-running.md
-docs/metrics/running.md
-docs/metrics/boat.md
-docs/metrics/paragliding.md
-docs/metrics/aircraft.md
-```
-
----
-
-# 66. Tests
-
-## Unitaires
-
-Tester :
-
-- conversions ;
-- statistiques ;
-- filtres ;
-- événements ;
-- fusion ;
-- provenance ;
-- imports ;
-- scores ;
-- migrations.
-
-## Replay
-
-Garantir :
-
-```text
-mêmes RAW
-+ même analysisVersion
-= mêmes résultats
-```
-
-## Simulation
-
-Créer des fixtures synthétiques :
-
-- accélération ;
-- freinage ;
-- virage ;
-- montée ;
-- descente ;
-- thermique ;
-- vibration ;
-- perte GNSS ;
-- décalage d’horloge.
-
-## Multi-participant
-
-Tester explicitement la randonnée Damien/Claire décrite plus haut.
-
-Vérifier qu’une correspondance spatiale et temporelle parfaite ne provoque jamais une fusion inter-participant.
-
----
-
-# 67. Confidentialité
+# 47. Confidentialité
 
 Par défaut :
 
@@ -1970,38 +1217,126 @@ Par défaut :
 - aucune synchronisation cloud imposée ;
 - données locales.
 
-Toute exportation doit être initiée explicitement.
+Toute exportation ou partage doit être explicite.
 
 ---
 
-# 68. Sécurité d’utilisation
+# 48. Sécurité d’utilisation
 
-En voiture, moto, bateau ou avion :
+En voiture, moto, bateau, parapente ou avion : limiter les interactions, utiliser de gros contrôles et reporter les analyses complexes après l’arrêt.
 
-- limiter les interactions pendant le déplacement ;
-- présenter de gros contrôles ;
-- reporter les analyses complexes après l’arrêt ;
-- ne pas inciter à manipuler l’écran en situation de conduite ou pilotage.
-
-TrackAnalyser est un outil d’analyse non certifié.
-
-Il ne remplace aucun instrument réglementaire, dispositif de sécurité, système de navigation ou instrument de vol.
+TrackAnalyser est un outil d’analyse non certifié et ne remplace aucun dispositif réglementaire, de sécurité ou de navigation.
 
 ---
 
-# 69. Scope V1.0 obligatoire
+# 49. Structure de dépôt cible
 
-La V1.0 doit livrer un produit utilisable et non une simple architecture vide.
+```text
+TrackAnalyser/
+├── apps/
+│   └── web/
+├── packages/
+│   ├── domain/
+│   ├── storage/
+│   ├── sensors/
+│   ├── importers/
+│   ├── exporters/
+│   ├── fusion/
+│   ├── visualization/
+│   └── ui/
+├── core/
+│   └── analytics/
+│       ├── cpp/
+│       └── wasm/
+├── firmware/
+│   ├── common/
+│   ├── tbeam/
+│   └── waveshare/
+├── tests/
+│   ├── fixtures/
+│   │   └── garmin/
+│   ├── replay/
+│   └── integration/
+└── docs/
+    ├── architecture/
+    ├── data-format/
+    ├── protocol/
+    ├── metrics/
+    └── visualization/
+```
+
+---
+
+# 50. Documentation obligatoire
+
+Créer et maintenir au minimum :
+
+- architecture générale ;
+- multi-participant ;
+- fusion ;
+- stockage ;
+- formats de session/export/backup ;
+- protocole boîtier ;
+- profils d’analyse ;
+- historique de versions d’analyse ;
+- chaque analyseur d’activité ;
+- règles de visualisation ;
+- cartographie ;
+- import FIT.
+
+La documentation technique doit rester cohérente avec `SPEC.md`.
+
+---
+
+# 51. Tests obligatoires
+
+## Unitaires
+
+Conversions, statistiques, filtres, événements, fusion, provenance, imports, scores, migrations, profils d’analyse et visualisation specs.
+
+## Replay
+
+Garantir :
+
+```text
+mêmes RAW
++ même analysisVersion
++ même analysisProfileVersion
+= mêmes résultats
+```
+
+## Simulation
+
+Accélération, freinage, virage, montée, descente, thermique, vibration, perte GNSS, décalage d’horloge.
+
+## Multi-participant
+
+Tester explicitement deux participants sur la même sortie et interdire toute contamination croisée.
+
+## Garmin
+
+Utiliser la fixture FIT réelle fournie pour vérifier : décodage, preservation du RAW, métriques reconnues, champs inconnus conservés et enrichissement du bon participant.
+
+## Visualisation
+
+Tester les échelles de comparaison, unités, absence de données, grandes valeurs, valeurs négatives et changement de système d’unités.
+
+---
+
+# 52. Scope V1.0 obligatoire
+
+La V1.0 doit être un produit réellement utilisable.
 
 ## Application
 
-- React + TypeScript + Vite ;
-- PWA installable ;
-- iOS fonctionnel ;
+- React/TypeScript/Vite ;
+- PWA installable iOS ;
 - architecture Android ;
 - offline-first ;
-- clair/sombre ;
-- UI moderne iOS-like.
+- GitHub Pages ;
+- clair/sombre/système ;
+- français avec i18n prêt ;
+- visualisations analytiques complètes.
 
 ## Domaine
 
@@ -2011,16 +1346,18 @@ La V1.0 doit livrer un produit utilisable et non une simple architecture vide.
 - appareils ;
 - sessions ;
 - segments ;
-- événements.
+- événements ;
+- AnalysisProfiles ;
+- AnalysisRuns.
 
 ## Acquisition
 
 - GNSS smartphone ;
 - DeviceMotion ;
-- timestamps ;
-- diagnostic de fréquence et qualité.
+- timestamps réels ;
+- diagnostic fréquence/qualité.
 
-## Analyseurs réellement implémentés
+## Analyseurs
 
 - Generic ;
 - Car ;
@@ -2038,7 +1375,7 @@ La V1.0 doit livrer un produit utilisable et non une simple architecture vide.
 - FIT ;
 - GPX ;
 - TCX ;
-- Apple Health export utilisable ;
+- fichiers Apple Health/Watch exploitables ;
 - JSON TrackAnalyser ;
 - `.tatrip` ;
 - `.tabackup`.
@@ -2046,43 +1383,41 @@ La V1.0 doit livrer un produit utilisable et non une simple architecture vide.
 ## Fusion
 
 - choix obligatoire du participant ;
-- détection de session cible après choix participant ;
-- ActivityGroup pour sortie partagée ;
-- priorité par canal ;
+- recherche de session après participant ;
+- priorité/qualité par canal ;
 - provenance ;
 - rapport de fusion ;
 - conservation RAW.
 
 ## Comparaison
 
-- deux sessions ;
-- deux participants ;
-- même ActivityGroup ;
-- deux équipements ;
-- même segment ;
-- événements comparables.
+- sessions ;
+- participants ;
+- équipements ;
+- ActivityGroups ;
+- segments ;
+- événements comparables ;
+- versions d’analyse.
 
-## Export
+## Export/backup
 
-- résumé JSON ;
+- JSON ;
 - CSV ;
 - `.tatrip` ;
 - `.tabackup`.
 
-## Maintenance
+## CI/CD
 
-- migrations ;
-- analysisVersion ;
-- recalcul ;
-- anti-cache ;
+- pnpm ;
+- GitHub Actions ;
+- CI PR/main ;
+- déploiement Pages ;
 - hot refresh sécurisé ;
-- tests.
+- tests automatisés.
 
 ---
 
-# 70. V1.1 matériel
-
-Ajouter sans refonte :
+# 53. V1.1 prévue sans refonte
 
 - firmware Waveshare ;
 - firmware T-Beam ;
@@ -2092,165 +1427,138 @@ Ajouter sans refonte :
 - microSD ;
 - streaming Wi-Fi ;
 - synchronisation différée ;
-- écran autonome.
-
-La V1.0 doit déjà contenir toutes les interfaces nécessaires à cette extension.
+- écran autonome ;
+- cartographie PMTiles hors ligne avec topo/relief lorsque disponible ;
+- anglais ;
+- import Apple Health ZIP/XML amélioré.
 
 ---
 
-# 71. Évolutions ultérieures
+# 54. Évolutions ultérieures
 
-Prévoir sans les imposer en V1 :
+Prévoir :
 
-- OBD/CAN automobile ;
+- OBD/CAN ;
 - seconde IMU ;
 - capteurs roue/suspension ;
 - capteurs nautiques ;
-- capteurs vélo complémentaires ;
-- météo externe ;
-- vent pour finesse air réelle ;
-- analyseurs kayak, SUP, ski et autres ;
+- météo/vent ;
+- finesse air corrigée du vent ;
+- analyseurs kayak, SUP, ski, etc. ;
+- capteurs spécialisés ;
 - synchronisation facultative entre appareils personnels.
 
 ---
 
-# 72. Critères d’acceptation V1
+# 55. Critères d’acceptation V1
 
-La V1 est considérée fonctionnelle si :
+La V1 est acceptable si notamment :
 
-1. une PWA peut être installée sur iPhone ;
-2. une session peut être enregistrée sans Internet ;
+1. la PWA s’installe sur iPhone ;
+2. une session s’enregistre sans Internet ;
 3. le participant est obligatoire ;
-4. une activité V1 peut être choisie ;
-5. un équipement peut être associé ;
-6. les fréquences réelles des capteurs sont mesurées ;
-7. les RAW sont conservés ;
-8. les dix analyseurs V1 produisent des métriques utiles ;
-9. deux sessions peuvent être comparées ;
-10. deux participants d’une même sortie peuvent être comparés sans fusion de leurs données ;
-11. un FIT peut enrichir une session ;
-12. le participant doit être choisi avant l’enrichissement ;
-13. un fichier Claire ne peut pas être fusionné automatiquement dans une session Damien même si la trace est identique ;
-14. les sessions communes peuvent être liées dans un ActivityGroup ;
-15. les données Garmin et ESP32 d’un même participant peuvent être fusionnées ;
-16. les données Apple Watch exportées peuvent enrichir la session du participant choisi ;
-17. la provenance de chaque métrique est consultable ;
-18. les doublons de capteurs ne sont pas moyennés naïvement ;
-19. `.tatrip` exporté peut être réimporté ;
-20. `.tabackup` restaure l’application ;
-21. les anciennes sessions peuvent être réanalysées ;
-22. une nouvelle PWA déployée remplace réellement l’ancienne ;
-23. aucune mise à jour ne recharge l’application pendant une session ;
-24. aucun modèle de téléphone n’est codé comme cas métier ;
-25. `RemoteDeviceSource` peut être ajouté sans refonte ;
-26. le cœur analytique dispose d’une compilation WebAssembly et d’une voie native ESP32 ;
-27. les tests de replay sont déterministes ;
-28. les tests multi-participant empêchent toute contamination de données entre participants.
+4. les dix activités sont réellement analysées ;
+5. les RAW sont conservés ;
+6. les fréquences/qualités capteurs sont mesurées ;
+7. un FIT enrichit la bonne session du bon participant ;
+8. une trace identique d’un autre participant n’est jamais fusionnée ;
+9. les données Garmin et ESP32 d’un même participant peuvent coexister et être fusionnées par canal ;
+10. les champs FIT inconnus restent conservés ;
+11. la provenance est consultable ;
+12. deux sessions/participants/équipements peuvent être comparés ;
+13. les visualisations utilisent des unités et échelles cohérentes ;
+14. l’iPhone ne présente pas seulement des nombres bruts pour les vues principales ;
+15. les données brutes restent accessibles dans une vue technique ;
+16. `.tatrip` est réimportable ;
+17. `.tabackup` restaure l’application ;
+18. une réanalyse ne détruit pas l’analyse originale ;
+19. l’original et la dernière analyse sont consultables ;
+20. la différence entre deux versions d’analyse peut être expliquée ;
+21. mêmes RAW + mêmes versions donnent les mêmes résultats ;
+22. une nouvelle PWA remplace l’ancienne sans interrompre une session ;
+23. aucun téléphone précis n’est codé comme cas métier ;
+24. `RemoteDeviceSource` peut être ajouté sans refonte ;
+25. le cœur analytique se compile en WASM et dispose d’une voie ESP-IDF/C++ native ;
+26. GitHub Actions valide puis déploie GitHub Pages ;
+27. les tests multi-participant empêchent toute contamination ;
+28. la fixture Garmin réelle passe les tests d’import et de conservation.
 
 ---
 
-# 73. Priorités de conception
+# 56. Priorités de conception
 
-En cas de compromis, respecter cet ordre :
+En cas de compromis :
 
 1. intégrité des données ;
-2. rattachement correct au participant ;
-3. fiabilité d’enregistrement ;
-4. provenance ;
+2. rattachement au bon participant ;
+3. fiabilité de l’enregistrement ;
+4. provenance et reproductibilité ;
 5. architecture durable ;
-6. fusion multi-source ;
+6. qualité de fusion ;
 7. explicabilité ;
-8. simplicité d’utilisation ;
-9. performance ;
-10. esthétique ;
-11. fonctions accessoires.
+8. visualisation fidèle ;
+9. simplicité d’utilisation ;
+10. performance ;
+11. esthétique ;
+12. fonctions accessoires.
 
 ---
 
-# 74. Règles à ne pas enfreindre
+# 57. Interdictions
 
 Ne pas :
 
-- coder l’iPhone 15 Pro comme cas spécial ;
+- coder un modèle de téléphone comme cas métier ;
 - lier le domaine à l’automobile ;
-- fusionner deux participants parce qu’ils ont le même trajet ;
-- importer des données sans choisir ou confirmer leur participant cible ;
+- fusionner deux participants parce que leurs traces se ressemblent ;
+- importer sans participant cible ;
 - supprimer les RAW ;
-- moyenner arbitrairement plusieurs capteurs ;
-- produire des scores non explicables ;
-- imposer Internet ;
-- imposer un cloud ;
-- rendre le téléphone indispensable au futur boîtier ;
-- rendre le boîtier indispensable à l’application ;
-- empêcher la réanalyse ;
-- recharger la PWA pendant une session ;
+- écraser une analyse historique ;
+- moyenner arbitrairement des capteurs ;
+- produire des scores opaques ;
+- afficher uniquement des données numériques brutes dans l’UI principale ;
+- utiliser des échelles visuelles trompeuses ;
+- imposer Internet ou cloud ;
+- rendre téléphone ou boîtier mutuellement indispensables ;
+- recharger la PWA pendant une session active ;
 - utiliser des emojis dans le code ou les commentaires ;
-- écrire des commentaires de style artificiel ou conversationnel ;
-- disperser les conditions d’activité dans l’UI ;
-- mélanger stockage, domaine, capteurs et présentation.
+- ajouter des marqueurs de génération IA ;
+- disperser les règles d’activité dans l’UI ;
+- mélanger stockage, domaine, capteurs, analyse et présentation.
 
 ---
 
-# 75. Architecture conceptuelle finale
+# 58. Instruction de démarrage Codex
 
-```text
-                         ActivityGroup
-                       /               \
-                 Session A          Session B
-                 Participant A      Participant B
-                    │                  │
-          ┌─────────┼─────────┐        ├──────────┐
-          │         │         │        │          │
-       ESP32      Garmin    Phone   AppleWatch   Phone
-          │         │         │        │          │
-          └─────────┼─────────┘        └────┬─────┘
-                    ▼                       ▼
-                 RAW A                    RAW B
-                    │                       │
-                    ▼                       ▼
-             Normalisation           Normalisation
-                    │                       │
-                    ▼                       ▼
-               Fusion A                 Fusion B
-                    │                       │
-                    ▼                       ▼
-              Analyse A                Analyse B
-                    │                       │
-                    └──────────┬────────────┘
-                               ▼
-                         Comparaison
-```
+Codex doit lire **intégralement ce fichier comme source autoritaire unique** avant toute modification.
 
----
+Objectif : implémenter la V1 de bout en bout sans demander confirmation sur les décisions déjà tranchées.
 
-# 76. Instruction de démarrage pour Codex
+Ordre recommandé :
 
-À partir de cette spécification :
+1. créer le monorepo pnpm ;
+2. configurer GitHub Actions et GitHub Pages ;
+3. créer le domaine ;
+4. implémenter repositories et stockage chaud/tiède/froid ;
+5. définir les formats versionnés ;
+6. implémenter capteurs smartphone ;
+7. implémenter pipeline RAW → NORMALIZED → SYNCHRONIZED → FUSED → DERIVED → ANALYSIS ;
+8. implémenter DataFusionEngine ;
+9. implémenter multi-participant et ActivityGroup ;
+10. implémenter AnalysisProfile/AnalysisRun ;
+11. mettre en place le cœur C++/CMake/WASM ;
+12. implémenter les dix analyseurs V1 ;
+13. implémenter les importeurs FIT/GPX/TCX/Apple ;
+14. implémenter exports et backup ;
+15. implémenter MapLibre ;
+16. implémenter le registre VisualizationSpec et les graphiques adaptés ;
+17. implémenter comparaison ;
+18. intégrer les tests et replays ;
+19. intégrer la fixture Garmin réelle si disponible ;
+20. documenter chaque sous-système ;
+21. préparer `RemoteDeviceSource`, protocole Wi-Fi et firmware ESP-IDF sans devoir les finaliser en V1.0 ;
+22. terminer avec CI verte et déploiement GitHub Pages fonctionnel.
 
-1. créer l’architecture complète du dépôt ;
-2. créer les modèles de domaine ;
-3. implémenter `Participant`, `ActivityGroup`, `Session`, `Equipment` et `DeviceProfile` ;
-4. implémenter les interfaces de capteurs ;
-5. implémenter le stockage offline ;
-6. définir les formats versionnés ;
-7. implémenter le pipeline RAW → NORMALIZED → SYNCHRONIZED → FUSED → DERIVED → ANALYSIS ;
-8. implémenter le `DataFusionEngine` ;
-9. imposer la sélection du participant avant fusion d’un import ;
-10. implémenter la logique ActivityGroup ;
-11. mettre en place le cœur analytique portable ;
-12. compiler le cœur vers WebAssembly ;
-13. développer la PWA React/TypeScript/Vite ;
-14. implémenter les dix analyseurs V1 ;
-15. implémenter FIT, GPX, TCX et Apple Health export ;
-16. implémenter import, export et backup ;
-17. implémenter les comparaisons multi-participant ;
-18. créer les diagnostics capteurs ;
-19. créer les tests multi-participant et de replay ;
-20. mettre en place le pipeline GitHub ;
-21. mettre en place la gestion fiable de mise à jour PWA ;
-22. documenter l’architecture et chaque analyseur ;
-23. préparer `RemoteDeviceSource` et le protocole futur ESP32 ;
-24. ne pas réduire le scope V1 aux seuls modes Generic et Car ;
-25. ne pas simplifier le modèle multi-participant sous prétexte que les premières données de test proviennent d’une seule personne.
+Lorsque des seuils physiques nécessitent une calibration terrain, utiliser des valeurs initiales raisonnables dans un `AnalysisProfile` versionné, les documenter et ne pas bloquer le développement.
 
-La V1 doit être construite comme une vraie base produit durable et directement extensible vers les boîtiers ESP32, sans réécriture du modèle métier ni du cœur analytique.
+Ne pas réduire le scope V1 sous prétexte que les premières données viennent d’un seul téléphone ou d’un seul participant.
