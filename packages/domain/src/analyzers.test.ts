@@ -68,12 +68,16 @@ describe('analyseurs V1', () => {
     expect(() => createVersionedAnalysisProfile(source, '1.0.0', 'Doublon', source.parameters)).toThrow(/différer/)
   })
 
-  it('extrait un même segment normalisé et des événements comparables', () => {
+  it('extrait une fenêtre de segment et filtre des événements comparables', () => {
     expect(normalizedSegment([0, 1, 2, 3, 4, 5], 25, 75)).toEqual([1, 2, 3, 4])
     expect(comparableEventValues([
       { type: 'freinage', severity: 0.8, metrics: { speed: 12 } },
       { type: 'virage', severity: 0.4, metrics: { speed: 8 } },
     ], 'freinage', 'speed')).toEqual([12])
+    expect(comparableEventValues([
+      { type: 'virage', severity: 0.4, metrics: { speed: 8 }, context: { type: 'turn', radius: 24, quality: 0.9 } },
+      { type: 'virage', severity: 0.5, metrics: { speed: 9 }, context: { type: 'turn', radius: 120, quality: 0.9 } },
+    ], 'virage', 'speed', { type: 'turn', radius: 20, quality: 0.9 })).toEqual([8])
     expect(() => normalizedSegment([1], 80, 20)).toThrow(/segment comparable/)
   })
 })

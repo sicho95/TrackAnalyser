@@ -12,7 +12,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(appVersion),
     __BUILD_ID__: JSON.stringify(buildId),
     __GIT_COMMIT__: JSON.stringify(gitCommit),
-    __SCHEMA_VERSION__: '3',
+    __SCHEMA_VERSION__: '4',
     __ANALYSIS_VERSION__: JSON.stringify('1.0.0'),
   },
   plugins: [
@@ -50,7 +50,7 @@ export default defineConfig({
         this.emitFile({
           type: 'asset',
           fileName: 'version.json',
-          source: JSON.stringify({ appVersion, buildId, gitCommit, schemaVersion: 3, analysisVersion: '1.0.0' }),
+          source: JSON.stringify({ appVersion, buildId, gitCommit, schemaVersion: 4, analysisVersion: '1.0.0' }),
         })
       },
     },

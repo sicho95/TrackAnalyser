@@ -13,7 +13,8 @@ Cette matrice complète `SPEC.md` sans le remplacer.
 | FIT réel | SDK officiel, fixture de 122 330 octets, 1 319 records et champs inconnus |
 | Fusion par canal | `DataFusionEngine`, provenance et tests AUTO/FUSION |
 | Historique | AnalysisProfile/AnalysisRun, profils immutables, original/dernier et réanalyse manuelle depuis les RAW |
-| Import/export | FIT, GPX, TCX, Apple XML, JSON, `.tatrip`, CSV, `.tabackup` |
+| Segments | détection depuis les événements durables, création manuelle depuis le RAW, empreinte GPS, contexte comparable et persistance séparée |
+| Import/export | FIT, GPX, TCX, Apple XML, JSON, `.tatrip` v2 avec segments, CSV, `.tabackup` v2 complet |
 | Cartographie | MapLibre, OSM/OpenTopoMap interchangeables, analyse sans carte |
 | Visualisations | registre, courbes, histogrammes, jauges signées et huit axes de comparaison à échelle commune |
 | Internationalisation | catalogue français typé, copies principales externalisées et navigation injectée dans le paquet UI |

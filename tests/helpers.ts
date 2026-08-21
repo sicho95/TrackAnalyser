@@ -12,7 +12,7 @@ export function session(id: string, participantId: string, activityType: Activit
     sourceIds: ['source-a'],
     startTime: '2026-08-21T10:00:00.000Z',
     endTime: '2026-08-21T10:01:00.000Z',
-    schemaVersion: 3,
+    schemaVersion: 4,
     rawDataReferences: [],
     analysisRunIds: [],
     status: 'COMPLETED',

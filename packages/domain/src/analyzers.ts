@@ -381,6 +381,7 @@ function eventsFor(context: AnalyzerContext): AnalysisEvent[] {
         endTime: sample.timestamp,
         severity: Math.abs(sample.value),
         metrics: { acceleration: sample.value },
+        context: comparableContext(context, type, sample.timestamp, sample.quality),
       })
     }
   })
@@ -395,7 +396,7 @@ function eventsFor(context: AnalyzerContext): AnalysisEvent[] {
       if ((!climbing || last) && start !== undefined) {
         const end = sample.timestamp
         if ((end - start) / 1000 >= (context.profile.parameters.thermalMinimumDurationSeconds ?? 20)) {
-          events.push({ id: `thermal-${start}`, type: 'THERMAL', startTime: start, endTime: end, metrics: {} })
+          events.push({ id: `thermal-${start}`, type: 'THERMAL', startTime: start, endTime: end, metrics: {}, context: comparableContext(context, 'THERMAL', start, sample.quality, (end - start) / 1_000) })
         }
         start = undefined
       }
@@ -405,14 +406,15 @@ function eventsFor(context: AnalyzerContext): AnalysisEvent[] {
     const threshold = context.profile.parameters.vibrationImpactThresholdMps2 ?? 8
     context.series('verticalAcceleration')?.samples.forEach((sample) => {
       if (typeof sample.value === 'number' && Math.abs(sample.value) >= threshold) {
-        events.push({ id: `impact-${sample.timestamp}`, type: 'IMPACT', startTime: sample.timestamp, endTime: sample.timestamp, severity: Math.abs(sample.value), metrics: { verticalAcceleration: sample.value } })
+        events.push({ id: `impact-${sample.timestamp}`, type: 'IMPACT', startTime: sample.timestamp, endTime: sample.timestamp, severity: Math.abs(sample.value), metrics: { verticalAcceleration: sample.value }, context: comparableContext(context, 'IMPACT', sample.timestamp, sample.quality) })
       }
     })
   }
   if (context.profile.activityType === 'MOTORCYCLE') {
     context.series('roll')?.samples.forEach((sample) => {
       if (typeof sample.value === 'number' && Math.abs(sample.value) >= 0.35) {
-        events.push({ id: `lean-${sample.timestamp}`, type: sample.value < 0 ? 'LEAN_LEFT' : 'LEAN_RIGHT', startTime: sample.timestamp, endTime: sample.timestamp, severity: Math.abs(sample.value), metrics: { roll: sample.value } })
+        const type = sample.value < 0 ? 'LEAN_LEFT' : 'LEAN_RIGHT'
+        events.push({ id: `lean-${sample.timestamp}`, type, startTime: sample.timestamp, endTime: sample.timestamp, severity: Math.abs(sample.value), metrics: { roll: sample.value }, context: comparableContext(context, type, sample.timestamp, sample.quality) })
       }
     })
   }
@@ -446,12 +448,32 @@ function aircraftPhases(context: AnalyzerContext): AnalysisEvent[] {
   speeds.slice(1).forEach((sample, index) => {
     const nextPhase = phaseAt(sample)
     if (nextPhase !== phase || index === speeds.length - 2) {
-      events.push({ id: `flight-${phase}-${start}`, type: phase, startTime: start, endTime: sample.timestamp, metrics: {} })
+      events.push({ id: `flight-${phase}-${start}`, type: phase, startTime: start, endTime: sample.timestamp, metrics: {}, context: comparableContext(context, phase, start, sample.quality, (sample.timestamp - start) / 1_000) })
       phase = nextPhase
       start = sample.timestamp
     }
   })
   return events
+}
+
+function comparableContext(context: AnalyzerContext, type: string, timestamp: number, quality: number, duration?: number): NonNullable<AnalysisEvent['context']> {
+  const speed = nearestNumericValue(context, 'speed', timestamp)
+  const altitude = nearestNumericValue(context, 'altitude', timestamp)
+  return {
+    type,
+    ...(speed === undefined ? {} : { speed }),
+    ...(duration === undefined ? {} : { duration }),
+    ...(altitude === undefined ? {} : { altitude }),
+    quality,
+  }
+}
+
+function nearestNumericValue(context: AnalyzerContext, channel: MetricChannel, timestamp: number): number | undefined {
+  const closest = context.series(channel)?.samples.reduce<SensorSample | undefined>((selected, sample) => {
+    if (typeof sample.value !== 'number') return selected
+    return selected === undefined || Math.abs(sample.timestamp - timestamp) < Math.abs(selected.timestamp - timestamp) ? sample : selected
+  }, undefined)
+  return typeof closest?.value === 'number' ? closest.value : undefined
 }
 
 function qualityFor(dataset: PipelineDataset): SessionQuality {

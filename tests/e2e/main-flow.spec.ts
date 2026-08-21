@@ -42,6 +42,9 @@ test('crée un participant puis enregistre et analyse hors cloud', async ({ page
   await page.getByRole('combobox', { name: 'Profil versionné' }).selectOption({ label: 'Profil GENERIC V1 calibré · 1.1.0' })
   await page.getByRole('button', { name: 'Lancer la réanalyse' }).click()
   await expect(page.getByText(/L’analyse originale reste conservée/)).toBeVisible({ timeout: 15_000 })
+  await page.getByLabel('Nom', { exact: true }).fill('Départ test')
+  await page.getByRole('button', { name: 'Conserver le segment' }).click()
+  await expect(page.getByText(/Départ test est disponible/)).toBeVisible({ timeout: 15_000 })
 })
 
 test('reste consultable après passage hors ligne', async ({ page, context, browserName }) => {

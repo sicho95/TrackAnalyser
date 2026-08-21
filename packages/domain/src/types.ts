@@ -360,6 +360,8 @@ export interface Segment {
   startDistance?: number
   endDistance?: number
   routeFingerprint?: string
+  routeSignature?: GeoPoint[]
+  context?: ComparableContext
   manual: boolean
 }
 

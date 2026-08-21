@@ -1,8 +1,8 @@
-import type { AnalysisRun, SensorSample, Session } from '@track-analyser/domain'
+import type { AnalysisRun, Segment, SensorSample, Session } from '@track-analyser/domain'
 import type { BackupSnapshot } from '@track-analyser/storage'
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate'
 
-export const EXPORT_FORMAT_VERSION = 1
+export const EXPORT_FORMAT_VERSION = 2
 
 interface ArchiveManifest {
   format: 'tatrip' | 'tabackup'
@@ -15,6 +15,7 @@ interface ArchiveManifest {
 export interface TripArchiveInput {
   session: Session
   analysisRuns: AnalysisRun[]
+  segments: Segment[]
   samples: SensorSample[]
   rawFiles: Readonly<Record<string, Uint8Array>>
 }
@@ -31,6 +32,11 @@ function requiredJson<T>(files: Record<string, Uint8Array>, path: string): T {
   const bytes = files[path]
   if (bytes === undefined) throw new Error(`Archive incomplète : ${path} absent.`)
   return JSON.parse(strFromU8(bytes)) as T
+}
+
+function optionalJson<T>(files: Record<string, Uint8Array>, path: string, fallback: T): T {
+  const bytes = files[path]
+  return bytes === undefined ? fallback : JSON.parse(strFromU8(bytes)) as T
 }
 
 export function exportSummaryJson(session: Session, runs: readonly AnalysisRun[], samples: readonly SensorSample[] = []): string {
@@ -95,6 +101,7 @@ export function createTripArchive(input: TripArchiveInput): Uint8Array {
     'session.json': jsonBytes(input.session),
     'summary.json': strToU8(exportSummaryJson(input.session, input.analysisRuns)),
     'analysis/runs.json': jsonBytes(input.analysisRuns),
+    'segments.json': jsonBytes(input.segments),
     'normalized/samples.ndjson': strToU8(input.samples.map((sample) => JSON.stringify(sample)).join('\n')),
   }
   Object.entries(input.rawFiles).forEach(([path, bytes]) => {
@@ -109,6 +116,7 @@ export function restoreTripArchive(bytes: Uint8Array): RestoredTrip {
   if (manifest.format !== 'tatrip') throw new Error('Cette archive n’est pas un fichier .tatrip.')
   const session = requiredJson<Session>(files, 'session.json')
   const analysisRuns = requiredJson<AnalysisRun[]>(files, 'analysis/runs.json')
+  const segments = optionalJson<Segment[]>(files, 'segments.json', [])
   const ndjson = files['normalized/samples.ndjson']
   const samples =
     ndjson === undefined || ndjson.length === 0
@@ -122,7 +130,7 @@ export function restoreTripArchive(bytes: Uint8Array): RestoredTrip {
       .filter(([path]) => path.startsWith('raw/'))
       .map(([path, value]) => [path.slice(4), value]),
   )
-  return { manifest, session, analysisRuns, samples, rawFiles }
+  return { manifest, session, analysisRuns, segments, samples, rawFiles }
 }
 
 export function createBackupArchive(snapshot: BackupSnapshot, rawFiles: Readonly<Record<string, Uint8Array>> = {}): Uint8Array {
@@ -143,6 +151,7 @@ export function createBackupArchive(snapshot: BackupSnapshot, rawFiles: Readonly
     'sessions/index.json': jsonBytes(snapshot.sessions),
     'profiles/analysis.json': jsonBytes(snapshot.analysisProfiles),
     'statistics/analysis-runs.json': jsonBytes(snapshot.analysisRuns),
+    'segments.json': jsonBytes(snapshot.segments),
   }
   Object.entries(rawFiles).forEach(([path, value]) => {
     files[`sessions/raw/${path}`] = value
@@ -166,6 +175,7 @@ export function restoreBackupArchive(bytes: Uint8Array): { snapshot: BackupSnaps
     sessions: requiredJson(files, 'sessions/index.json'),
     analysisProfiles: requiredJson(files, 'profiles/analysis.json'),
     analysisRuns: requiredJson(files, 'statistics/analysis-runs.json'),
+    segments: optionalJson(files, 'segments.json', []),
   }
   const rawFiles = Object.fromEntries(
     Object.entries(files)
@@ -177,6 +187,8 @@ export function restoreBackupArchive(bytes: Uint8Array): { snapshot: BackupSnaps
 
 export function migrateManifest(manifest: ArchiveManifest): ArchiveManifest {
   if (manifest.formatVersion === EXPORT_FORMAT_VERSION) return manifest
-  if (manifest.formatVersion === 0) return { ...manifest, formatVersion: 1, schemaVersion: manifest.schemaVersion ?? 1 }
+  if (manifest.formatVersion === 0 || manifest.formatVersion === 1) {
+    return { ...manifest, formatVersion: EXPORT_FORMAT_VERSION, schemaVersion: manifest.schemaVersion ?? 1 }
+  }
   throw new Error(`Version d’archive non prise en charge : ${manifest.formatVersion}.`)
 }

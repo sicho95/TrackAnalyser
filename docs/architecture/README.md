@@ -41,7 +41,7 @@ ANALYSIS / AnalysisRun immuable et versionné
         │
         ├── visualisation
         ├── comparaison
-        └── profils statistiques futurs
+        └── profils statistiques agrégés
 ```
 
 Une transition non adjacente est refusée. `executeAnalysis` exige un jeu `DERIVED`. Le fingerprint d’entrée inclut les échantillons, le participant, la version moteur et le profil.

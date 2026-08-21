@@ -7,6 +7,7 @@ import type {
   DeviceProfile,
   Equipment,
   Participant,
+  Segment,
   Session,
 } from '@track-analyser/domain'
 import { openTrackAnalyserDatabase, type TrackAnalyserDatabaseHandle } from './database'
@@ -29,7 +30,8 @@ class ObjectStoreRepository<T extends { id: string }> implements Repository<T> {
       | 'calibrations'
       | 'sessions'
       | 'analysisProfiles'
-      | 'analysisRuns',
+      | 'analysisRuns'
+      | 'segments',
   ) {}
 
   async get(id: string): Promise<T | undefined> {
@@ -61,6 +63,7 @@ export interface BackupSnapshot {
   sessions: Session[]
   analysisProfiles: AnalysisProfile[]
   analysisRuns: AnalysisRun[]
+  segments: Segment[]
 }
 
 export class LocalRepositories {
@@ -72,6 +75,7 @@ export class LocalRepositories {
   readonly sessions: Repository<Session>
   readonly analysisProfiles: Repository<AnalysisProfile>
   readonly analysisRuns: Repository<AnalysisRun>
+  readonly segments: Repository<Segment>
 
   private constructor(private readonly database: TrackAnalyserDatabaseHandle) {
     this.participants = new ObjectStoreRepository(database, 'participants')
@@ -82,6 +86,7 @@ export class LocalRepositories {
     this.sessions = new ObjectStoreRepository(database, 'sessions')
     this.analysisProfiles = new ObjectStoreRepository(database, 'analysisProfiles')
     this.analysisRuns = new ObjectStoreRepository(database, 'analysisRuns')
+    this.segments = new ObjectStoreRepository(database, 'segments')
   }
 
   static async open(): Promise<LocalRepositories> {
@@ -100,7 +105,7 @@ export class LocalRepositories {
   async getSettings(): Promise<AppSettings> {
     return (
       (await this.database.get('settings', 'app')) ?? {
-        schemaVersion: 3,
+        schemaVersion: 4,
         theme: 'system',
         locale: 'fr',
         unitSystem: 'metric',
@@ -115,7 +120,7 @@ export class LocalRepositories {
   }
 
   async snapshot(): Promise<BackupSnapshot> {
-    const [settings, participants, activityGroups, equipment, devices, calibrations, sessions, analysisProfiles, analysisRuns] =
+    const [settings, participants, activityGroups, equipment, devices, calibrations, sessions, analysisProfiles, analysisRuns, segments] =
       await Promise.all([
         this.getSettings(),
         this.participants.list(),
@@ -126,6 +131,7 @@ export class LocalRepositories {
         this.sessions.list(),
         this.analysisProfiles.list(),
         this.analysisRuns.list(),
+        this.segments.list(),
       ])
     return {
       formatVersion: 1,
@@ -139,13 +145,14 @@ export class LocalRepositories {
       sessions,
       analysisProfiles,
       analysisRuns,
+      segments,
     }
   }
 
   async restore(snapshot: BackupSnapshot): Promise<void> {
     if (snapshot.formatVersion !== 1) throw new Error('Version de sauvegarde non prise en charge.')
     const transaction = this.database.transaction(
-      ['settings', 'participants', 'activityGroups', 'equipment', 'devices', 'calibrations', 'sessions', 'analysisProfiles', 'analysisRuns'],
+      ['settings', 'participants', 'activityGroups', 'equipment', 'devices', 'calibrations', 'sessions', 'analysisProfiles', 'analysisRuns', 'segments'],
       'readwrite',
     )
     await Promise.all([
@@ -158,6 +165,7 @@ export class LocalRepositories {
       ...snapshot.sessions.map((item) => transaction.objectStore('sessions').put(item)),
       ...snapshot.analysisProfiles.map((item) => transaction.objectStore('analysisProfiles').put(item)),
       ...snapshot.analysisRuns.map((item) => transaction.objectStore('analysisRuns').put(item)),
+      ...snapshot.segments.map((item) => transaction.objectStore('segments').put(item)),
       transaction.done,
     ])
   }

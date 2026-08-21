@@ -53,5 +53,18 @@ describe('stockage local résilient', () => {
     })
     const database = await openTrackAnalyserDatabase()
     expect((await database.get('sessions', 'legacy'))?.status).toBe('COMPLETED')
+    expect(database.objectStoreNames.contains('segments')).toBe(true)
+  })
+
+  it('persiste les segments sans les rattacher au participant voisin', async () => {
+    const repositories = await LocalRepositories.open()
+    await repositories.segments.put({ id: 'segment-a', sessionId: 'session-a', name: 'Col', startTime: 1, endTime: 2, routeFingerprint: 'route', manual: true })
+    await repositories.segments.put({ id: 'segment-b', sessionId: 'session-b', name: 'Col', startTime: 1, endTime: 2, routeFingerprint: 'route', manual: true })
+    const stored = await repositories.segments.list()
+    expect(stored.map((item) => item.sessionId).toSorted()).toEqual(['session-a', 'session-b'])
+    const snapshot = await repositories.snapshot()
+    await repositories.segments.delete('segment-a')
+    await repositories.restore(snapshot)
+    expect((await repositories.segments.get('segment-a'))?.sessionId).toBe('session-a')
   })
 })

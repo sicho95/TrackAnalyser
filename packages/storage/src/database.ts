@@ -7,12 +7,13 @@ import type {
   DeviceProfile,
   Equipment,
   Participant,
+  Segment,
   Session,
 } from '@track-analyser/domain'
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 
 export const DATABASE_NAME = 'track-analyser'
-export const DATABASE_VERSION = 3
+export const DATABASE_VERSION = 4
 
 export interface RawChunkRecord {
   key: string
@@ -32,6 +33,7 @@ interface TrackAnalyserDatabase extends DBSchema {
   sessions: { key: string; value: Session; indexes: { participantId: string; status: Session['status'] } }
   analysisProfiles: { key: string; value: AnalysisProfile; indexes: { activityType: string } }
   analysisRuns: { key: string; value: AnalysisRun; indexes: { sessionId: string } }
+  segments: { key: string; value: Segment; indexes: { sessionId: string; routeFingerprint: string } }
   settings: { key: string; value: AppSettings }
   rawChunks: { key: string; value: RawChunkRecord; indexes: { streamId: string } }
 }
@@ -70,6 +72,16 @@ export function openTrackAnalyserDatabase(): Promise<IDBPDatabase<TrackAnalyserD
             void cursor.update({ ...session, status: session.endTime === undefined ? 'INTERRUPTED' : 'COMPLETED' })
           }
           return cursor.continue().then(migrate)
+        })
+      }
+      if (oldVersion < 4) {
+        const segments = database.createObjectStore('segments', { keyPath: 'id' })
+        segments.createIndex('sessionId', 'sessionId')
+        segments.createIndex('routeFingerprint', 'routeFingerprint')
+        // Aligner la version applicative sans altérer les autres réglages existants.
+        const settings = transaction.objectStore('settings')
+        void settings.get('app').then((value) => {
+          if (value !== undefined) void settings.put({ ...value, schemaVersion: 4 }, 'app')
         })
       }
     },

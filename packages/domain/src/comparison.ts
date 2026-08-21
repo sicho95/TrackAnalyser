@@ -1,4 +1,5 @@
-import type { AnalysisMetric, ComparisonResult, ComparisonSeries } from './types'
+import { contextsAreComparable } from './segments'
+import type { AnalysisMetric, ComparableContext, ComparisonResult, ComparisonSeries } from './types'
 
 export function compareMetricSeries(metricId: string, series: readonly ComparisonSeries[], includeZero: boolean): ComparisonResult {
   if (series.length < 2) throw new Error('Sélectionner au moins deux séries comparables.')
@@ -45,12 +46,13 @@ export function normalizedSegment(values: readonly number[], startPercent: numbe
 }
 
 export function comparableEventValues(
-  events: readonly { type: string; severity?: number; metrics: Readonly<Record<string, number>> }[],
+  events: readonly { type: string; severity?: number; metrics: Readonly<Record<string, number>>; context?: ComparableContext }[],
   eventType: string,
   metricId: string,
+  referenceContext?: ComparableContext,
 ): number[] {
   return events
-    .filter((event) => event.type === eventType)
+    .filter((event) => event.type === eventType && (referenceContext === undefined || contextsAreComparable(referenceContext, event.context)))
     .flatMap((event) => {
       const value = event.metrics[metricId] ?? event.severity
       return value === undefined || !Number.isFinite(value) ? [] : [value]

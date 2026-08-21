@@ -13,9 +13,11 @@ describe('archives froides versionnées', () => {
   it('réimporte un .tatrip avec son RAW', () => {
     const currentSession = { ...session('session', 'damien'), analysisRunIds: ['run'], originalAnalysisRunId: 'run', latestAnalysisRunId: 'run' }
     const raw = new Uint8Array([1, 2, 3, 4])
-    const restored = restoreTripArchive(createTripArchive({ session: currentSession, analysisRuns: [run], samples: [], rawFiles: { 'activity.fit': raw } }))
+    const tripSegment = { id: 'segment', sessionId: 'session', name: 'Montée', startTime: 1, endTime: 2, manual: true }
+    const restored = restoreTripArchive(createTripArchive({ session: currentSession, analysisRuns: [run], segments: [tripSegment], samples: [], rawFiles: { 'activity.fit': raw } }))
     expect(restored.session).toEqual(currentSession)
     expect(restored.analysisRuns).toEqual([run])
+    expect(restored.segments).toEqual([tripSegment])
     expect(restored.rawFiles['activity.fit']).toEqual(raw)
   })
 
@@ -25,8 +27,9 @@ describe('archives froides versionnées', () => {
     const snapshot = {
       formatVersion: 1 as const,
       createdAt: '2026-08-21T10:00:00.000Z',
-      settings: { schemaVersion: 3, theme: 'system' as const, locale: 'fr' as const, unitSystem: 'metric' as const, mapProvider: 'osm', pendingUpdate: false },
+      settings: { schemaVersion: 4, theme: 'system' as const, locale: 'fr' as const, unitSystem: 'metric' as const, mapProvider: 'osm', pendingUpdate: false },
       participants: [currentParticipant], activityGroups: [], equipment: [], devices: [], calibrations: [], sessions: [currentSession], analysisProfiles: [], analysisRuns: [run],
+      segments: [{ id: 'segment', sessionId: 'session', name: 'Montée', startTime: 1, endTime: 2, manual: true }],
     }
     const restored = restoreBackupArchive(createBackupArchive(snapshot, { 'raw.bin': new Uint8Array([7, 8]) }))
     expect(restored.snapshot).toMatchObject(snapshot)
@@ -34,7 +37,8 @@ describe('archives froides versionnées', () => {
   })
 
   it('migre explicitement un manifeste historique', () => {
-    expect(migrateManifest({ format: 'tatrip', formatVersion: 0, schemaVersion: 1, createdAt: '2026-01-01T00:00:00.000Z' })).toMatchObject({ formatVersion: 1, schemaVersion: 1 })
+    expect(migrateManifest({ format: 'tatrip', formatVersion: 0, schemaVersion: 1, createdAt: '2026-01-01T00:00:00.000Z' })).toMatchObject({ formatVersion: 2, schemaVersion: 1 })
+    expect(migrateManifest({ format: 'tabackup', formatVersion: 1, schemaVersion: 3, createdAt: '2026-01-01T00:00:00.000Z' })).toMatchObject({ formatVersion: 2, schemaVersion: 3 })
     expect(() => migrateManifest({ format: 'tatrip', formatVersion: 99, schemaVersion: 1, createdAt: '2026-01-01T00:00:00.000Z' })).toThrow(/non prise en charge/)
   })
 })

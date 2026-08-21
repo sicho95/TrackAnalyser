@@ -58,7 +58,7 @@ function parseTripArchive(bytes: Uint8Array, fileName: string): ImportResult {
     samples: restored.samples,
     opaqueRecords: [],
     rawBytes: bytes,
-    metadata: { tripSession: restored.session, analysisRuns: restored.analysisRuns, embeddedRawFiles: Object.keys(restored.rawFiles) },
+    metadata: { tripSession: restored.session, analysisRuns: restored.analysisRuns, segments: restored.segments, embeddedRawFiles: Object.keys(restored.rawFiles) },
     warnings: [],
   }
 }

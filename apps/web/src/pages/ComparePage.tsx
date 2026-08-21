@@ -3,6 +3,8 @@ import {
   comparableEventValues,
   compareMetricSeries,
   normalizedSegment,
+  segmentPercentWindow,
+  segmentsAreComparable,
   type ActivityType,
   type AnalysisRun,
   type ComparisonSeries,
@@ -20,7 +22,7 @@ type ComparisonMode = 'SESSION' | 'PARTICIPANT' | 'EQUIPMENT' | 'GROUP' | 'SEGME
 const MODE_LABELS: Readonly<Record<ComparisonMode, string>> = messages.compare.modes
 
 export function ComparePage(): ReactNode {
-  const { sessions, participants, equipment, analysisRuns, activityGroups, createActivityGroup } = useAppData()
+  const { sessions, participants, equipment, analysisRuns, activityGroups, segments, createActivityGroup } = useAppData()
   const [mode, setMode] = useState<ComparisonMode>('SESSION')
   const [leftId, setLeftId] = useState('')
   const [rightId, setRightId] = useState('')
@@ -34,8 +36,8 @@ export function ComparePage(): ReactNode {
   const [temporalParticipantId, setTemporalParticipantId] = useState('')
   const [analysisSessionId, setAnalysisSessionId] = useState('')
   const [eventType, setEventType] = useState('')
-  const [segmentStart, setSegmentStart] = useState(0)
-  const [segmentEnd, setSegmentEnd] = useState(100)
+  const [leftSegmentId, setLeftSegmentId] = useState('')
+  const [rightSegmentId, setRightSegmentId] = useState('')
 
   const runFor = useCallback((session: Session | undefined): AnalysisRun | undefined => analysisRuns.find((run) => run.id === session?.latestAnalysisRunId), [analysisRuns])
   const effectiveLeftId = sessions.some((session) => session.id === leftId) ? leftId : sessions[0]?.id ?? ''
@@ -53,6 +55,11 @@ export function ComparePage(): ReactNode {
   const effectiveTemporalParticipantId = participants.some((item) => item.id === temporalParticipantId) ? temporalParticipantId : participants[0]?.id ?? ''
   const versionedSessions = sessions.filter((session) => session.analysisRunIds.length > 1)
   const effectiveAnalysisSessionId = versionedSessions.some((session) => session.id === analysisSessionId) ? analysisSessionId : versionedSessions[0]?.id ?? ''
+  const effectiveLeftSegmentId = segments.some((segment) => segment.id === leftSegmentId) ? leftSegmentId : segments[0]?.id ?? ''
+  const leftSegment = segments.find((segment) => segment.id === effectiveLeftSegmentId)
+  const comparableSegments = leftSegment === undefined ? [] : segments.filter((segment) => segmentsAreComparable(leftSegment, segment))
+  const effectiveRightSegmentId = comparableSegments.some((segment) => segment.id === rightSegmentId) ? rightSegmentId : comparableSegments[0]?.id ?? ''
+  const rightSegment = comparableSegments.find((segment) => segment.id === effectiveRightSegmentId)
 
   const series = useMemo(() => {
     const fromSession = (session: Session, label: string, values?: readonly number[]): ComparisonSeries | undefined => {
@@ -71,11 +78,14 @@ export function ComparePage(): ReactNode {
       left === undefined ? undefined : fromSession(left, sessionLabel(left, participants, equipment)),
       right === undefined ? undefined : fromSession(right, sessionLabel(right, participants, equipment)),
     ])
-    if (mode === 'SEGMENT') return compact([left, right].map((session) => {
+    if (mode === 'SEGMENT') return compact([leftSegment, rightSegment].map((segment) => {
+      if (segment === undefined) return undefined
+      const session = sessions.find((candidate) => candidate.id === segment.sessionId)
       if (session === undefined) return undefined
       const values = runFor(session)?.result.visualizationSeries[metric] ?? []
       try {
-        return fromSession(session, sessionLabel(session, participants, equipment), normalizedSegment(values, segmentStart, segmentEnd))
+        const [start, end] = segmentPercentWindow(session, segment)
+        return fromSession(session, `${segment.name} · ${sessionLabel(session, participants, equipment)}`, normalizedSegment(values, start, end))
       } catch {
         return undefined
       }
@@ -83,7 +93,8 @@ export function ComparePage(): ReactNode {
     if (mode === 'EVENT') return compact([left, right].map((session) => {
       if (session === undefined) return undefined
       const run = runFor(session)
-      return fromSession(session, sessionLabel(session, participants, equipment), comparableEventValues(run?.result.events ?? [], effectiveEventType, metric))
+      const referenceContext = runFor(left)?.result.events.find((event) => event.type === effectiveEventType)?.context
+      return fromSession(session, sessionLabel(session, participants, equipment), comparableEventValues(run?.result.events ?? [], effectiveEventType, metric, session.id === left?.id ? undefined : referenceContext))
     }))
     if (mode === 'PARTICIPANT') return compact([
       aggregate(`participant-${effectiveParticipantA}`, participants.find((item) => item.id === effectiveParticipantA)?.name ?? 'Participant A', sessions.filter((session) => session.participantId === effectiveParticipantA && session.activityType === activityType)),
@@ -108,7 +119,7 @@ export function ComparePage(): ReactNode {
       }))
     }
     return []
-  }, [activityGroups, activityType, analysisRuns, effectiveAnalysisSessionId, effectiveEquipmentA, effectiveEquipmentB, effectiveEventType, effectiveGroupId, effectiveParticipantA, effectiveParticipantB, equipment, left, metric, mode, participants, right, runFor, segmentEnd, segmentStart, sessions])
+  }, [activityGroups, activityType, analysisRuns, effectiveAnalysisSessionId, effectiveEquipmentA, effectiveEquipmentB, effectiveEventType, effectiveGroupId, effectiveParticipantA, effectiveParticipantB, equipment, left, leftSegment, metric, mode, participants, right, rightSegment, runFor, sessions])
 
   const comparison = useMemo(() => {
     if (series.length < 2) return undefined
@@ -128,14 +139,14 @@ export function ComparePage(): ReactNode {
 
   return <div className="screen"><ScreenHeader eyebrow={messages.compare.eyebrow} title={messages.compare.title} />
     <section className="comparison-mode"><label>{messages.compare.type}<select value={mode} onChange={(event) => setMode(event.target.value as ComparisonMode)}>{Object.entries(MODE_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></section>
-    {['SESSION', 'SEGMENT', 'EVENT'].includes(mode) ? <SessionPickers sessions={sessions} leftId={effectiveLeftId} rightId={effectiveRightId} onLeft={setLeftId} onRight={setRightId} participants={participants} equipment={equipment} /> : null}
+    {['SESSION', 'EVENT'].includes(mode) ? <SessionPickers sessions={sessions} leftId={effectiveLeftId} rightId={effectiveRightId} onLeft={setLeftId} onRight={setRightId} participants={participants} equipment={equipment} /> : null}
     {['PARTICIPANT', 'EQUIPMENT', 'TEMPORAL'].includes(mode) ? <label>{messages.compare.activity}<select value={activityType} onChange={(event) => setActivityType(event.target.value as ActivityType)}>{ACTIVITY_TYPES.map((type) => <option key={type}>{messages.activity[type]}</option>)}</select></label> : null}
     {mode === 'PARTICIPANT' ? <div className="comparison-picker"><EntityPicker label={messages.compare.participantA} value={effectiveParticipantA} onChange={setParticipantA} options={participants.map((item) => ({ id: item.id, label: item.name }))} /><EntityPicker label={messages.compare.participantB} value={effectiveParticipantB} onChange={setParticipantB} options={participants.filter((item) => item.id !== effectiveParticipantA).map((item) => ({ id: item.id, label: item.name }))} /></div> : null}
     {mode === 'EQUIPMENT' ? <div className="comparison-picker"><EntityPicker label={messages.compare.equipmentA} value={effectiveEquipmentA} onChange={setEquipmentA} options={equipment.map((item) => ({ id: item.id, label: item.name }))} /><EntityPicker label={messages.compare.equipmentB} value={effectiveEquipmentB} onChange={setEquipmentB} options={equipment.filter((item) => item.id !== effectiveEquipmentA).map((item) => ({ id: item.id, label: item.name }))} /></div> : null}
     {mode === 'GROUP' ? <EntityPicker label={messages.compare.group} value={effectiveGroupId} onChange={setGroupId} options={activityGroups.map((group) => ({ id: group.id, label: group.title ?? `${group.activityType} · ${group.sessionIds.length} sessions` }))} /> : null}
     {mode === 'ANALYSIS' ? <EntityPicker label={messages.compare.historySession} value={effectiveAnalysisSessionId} onChange={setAnalysisSessionId} options={versionedSessions.map((session) => ({ id: session.id, label: sessionLabel(session, participants, equipment) }))} /> : null}
     {mode === 'TEMPORAL' ? <EntityPicker label={messages.compare.participant} value={effectiveTemporalParticipantId} onChange={setTemporalParticipantId} options={participants.map((item) => ({ id: item.id, label: item.name }))} /> : null}
-    {mode === 'SEGMENT' ? <section className="segment-picker"><Route size={20} /><label>{messages.compare.segmentStart}<input type="number" min="0" max="99" value={segmentStart} onChange={(event) => setSegmentStart(Number(event.target.value))} /> %</label><label>{messages.compare.segmentEnd}<input type="number" min="1" max="100" value={segmentEnd} onChange={(event) => setSegmentEnd(Number(event.target.value))} /> %</label><p>{messages.compare.segmentBody}</p></section> : null}
+    {mode === 'SEGMENT' ? <section className="segment-picker"><Route size={20} /><div className="comparison-picker"><EntityPicker label={messages.compare.segmentA} value={effectiveLeftSegmentId} onChange={setLeftSegmentId} options={segments.map((segment) => ({ id: segment.id, label: segmentLabel(segment, sessions, participants, equipment) }))} /><EntityPicker label={messages.compare.segmentB} value={effectiveRightSegmentId} onChange={setRightSegmentId} options={comparableSegments.map((segment) => ({ id: segment.id, label: segmentLabel(segment, sessions, participants, equipment) }))} /></div><p>{leftSegment === undefined ? messages.compare.segmentEmpty : leftSegment.routeFingerprint === undefined ? messages.compare.segmentContext : messages.compare.segmentGps}</p></section> : null}
     {mode === 'EVENT' ? <EntityPicker label={messages.compare.eventType} value={effectiveEventType} onChange={setEventType} options={eventTypes.map((type) => ({ id: type, label: type }))} /> : null}
     <label>{messages.compare.metric}<select value={metric} onChange={(event) => setMetric(event.target.value)}>{channels.map((channel) => <option key={channel} value={channel}>{channel}</option>)}</select></label>
     {mode === 'SESSION' && canGroup ? <button className="secondary-button" type="button" onClick={() => void createActivityGroup([left.id, right.id], 'Sortie commune')}>{messages.compare.associate}</button> : null}
@@ -165,4 +176,5 @@ function TemporalResult({ values, metric }: { values: { session: Session; value:
 function compact<T>(values: readonly (T | undefined)[]): T[] { return values.filter((value): value is T => value !== undefined) }
 function average(values: readonly number[]): number { return values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length }
 function sessionLabel(session: Session, participants: ReturnType<typeof useAppData>['participants'], equipment: ReturnType<typeof useAppData>['equipment']): string { const participant = participants.find((item) => item.id === session.participantId)?.name ?? '?'; const item = equipment.find((candidate) => candidate.id === session.equipmentId)?.name; return `${participant} · ${session.activityType}${item === undefined ? '' : ` · ${item}`}` }
+function segmentLabel(segment: ReturnType<typeof useAppData>['segments'][number], sessions: Session[], participants: ReturnType<typeof useAppData>['participants'], equipment: ReturnType<typeof useAppData>['equipment']): string { const session = sessions.find((candidate) => candidate.id === segment.sessionId); return session === undefined ? segment.name : `${segment.name} · ${sessionLabel(session, participants, equipment)}` }
 function unitFor(metric: string): string { return metric === 'speed' ? 'm/s' : metric === 'heartRate' ? 'bpm' : metric === 'cadence' ? 'rpm' : metric === 'power' ? 'W' : metric === 'altitude' ? 'm' : '' }
