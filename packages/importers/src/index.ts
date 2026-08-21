@@ -1,4 +1,5 @@
 import type { ImportResult } from '@track-analyser/domain'
+import { restoreTripArchive } from '@track-analyser/exporters'
 import { parseFit } from './fit'
 import { parseTrackAnalyserJson } from './json'
 import { parseAppleHealthXml, parseGpx, parseTcx } from './xml'
@@ -35,9 +36,29 @@ export function parseImportedFile(bytes: Uint8Array, fileName: string): ImportRe
     case 'TRACK_ANALYSER_JSON':
       return parseTrackAnalyserJson(bytes, fileName)
     case 'TATRIP':
+      return parseTripArchive(bytes, fileName)
     case 'TABACKUP':
     case 'APPLE_WORKOUT':
       throw new Error(`Utiliser le restaurateur dédié pour ${format}.`)
   }
 }
 
+function parseTripArchive(bytes: Uint8Array, fileName: string): ImportResult {
+  const restored = restoreTripArchive(bytes)
+  return {
+    identity: {
+      format: 'TATRIP',
+      fileName,
+      sha256: restored.session.rawDataReferences[0]?.sha256 ?? restored.manifest.sessionId ?? fileName,
+      startTime: restored.session.startTime,
+      ...(restored.session.endTime === undefined ? {} : { endTime: restored.session.endTime }),
+      activityType: restored.session.activityType,
+      channels: [...new Set(restored.samples.map((sample) => sample.channel))],
+    },
+    samples: restored.samples,
+    opaqueRecords: [],
+    rawBytes: bytes,
+    metadata: { tripSession: restored.session, analysisRuns: restored.analysisRuns, embeddedRawFiles: Object.keys(restored.rawFiles) },
+    warnings: [],
+  }
+}

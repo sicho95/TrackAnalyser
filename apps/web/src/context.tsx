@@ -2,6 +2,7 @@ import {
   DEFAULT_ANALYSIS_PROFILES,
   attachAnalysisRun,
   createPipelineDataset,
+  deriveDataset,
   executeAnalysis,
   transitionDataset,
   validateImportTarget,
@@ -33,6 +34,7 @@ interface AppData {
   acquisitionStatus: string
   addParticipant(name: string): Promise<Participant>
   addEquipment(name: string, type: string): Promise<Equipment>
+  createActivityGroup(sessionIds: string[], title?: string): Promise<ActivityGroup>
   startSession(participantId: string, activityType: ActivityType, equipmentId?: string): Promise<Session>
   stopSession(): Promise<Session>
   importData(result: ImportResult, participantId: string, sessionId?: string): Promise<Session>
@@ -119,6 +121,28 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     await refresh()
     return item
   }, [refresh, repositories])
+
+  const createActivityGroup = useCallback(async (sessionIds: string[], title?: string): Promise<ActivityGroup> => {
+    if (repositories === undefined) throw new Error('Stockage non initialisé.')
+    const selected = sessionIds.map((id) => sessions.find((session) => session.id === id)).filter((session): session is Session => session !== undefined)
+    if (selected.length < 2) throw new Error('Sélectionner au moins deux sessions.')
+    if (new Set(selected.map((session) => session.activityType)).size !== 1) throw new Error('Un ActivityGroup regroupe une même activité réelle.')
+    const firstSession = selected[0]
+    if (firstSession === undefined) throw new Error('Aucune session sélectionnée.')
+    const endTime = selected.flatMap((session) => session.endTime === undefined ? [] : [session.endTime]).toSorted().at(-1)
+    const group: ActivityGroup = {
+      id: crypto.randomUUID(),
+      activityType: firstSession.activityType,
+      ...(title?.trim() ? { title: title.trim() } : {}),
+      startTime: firstSession.startTime,
+      ...(endTime === undefined ? {} : { endTime }),
+      sessionIds: selected.map((session) => session.id),
+    }
+    await repositories.activityGroups.put(group)
+    await Promise.all(selected.map((session) => repositories.sessions.put({ ...session, activityGroupId: group.id })))
+    await refresh()
+    return group
+  }, [refresh, repositories, sessions])
 
   const startSession = useCallback(async (participantId: string, activityType: ActivityType, equipmentId?: string): Promise<Session> => {
     if (repositories === undefined) throw new Error('Stockage non initialisé.')
@@ -237,19 +261,16 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     acquisitionStatus,
     addParticipant,
     addEquipment,
+    createActivityGroup,
     startSession,
     stopSession,
     importData,
     updateSettings,
     refresh,
     ...(repositories === undefined ? {} : { repositories }),
-  }), [acquisitionStatus, activeSession, activityGroups, addEquipment, addParticipant, analysisRuns, equipment, importData, liveSamples, participants, readyKey(repositories), refresh, sessions, settings, startSession, stopSession, updateSettings])
+  }), [acquisitionStatus, activeSession, activityGroups, addEquipment, addParticipant, analysisRuns, createActivityGroup, equipment, importData, liveSamples, participants, repositories, refresh, sessions, settings, startSession, stopSession, updateSettings])
 
   return <AppDataContext value={value}>{children}</AppDataContext>
-}
-
-function readyKey(repositories: LocalRepositories | undefined): boolean {
-  return repositories !== undefined
 }
 
 function analyzeSession(
@@ -262,13 +283,15 @@ function analyzeSession(
   const normalized = transitionDataset(raw, 'NORMALIZED')
   const synchronized = synchronizeByUtc(normalized)
   const fused = new DataFusionEngine(__ANALYSIS_VERSION__).fuse(synchronized, []).dataset
-  return executeAnalysis(session, fused, profile, previousRuns, {
+  const derived = deriveDataset(fused)
+  return executeAnalysis(session, derived, profile, previousRuns, {
     analysisVersion: __ANALYSIS_VERSION__,
     engineBuildId: __BUILD_ID__,
     gitCommit: __GIT_COMMIT__,
   })
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAppData(): AppData {
   const context = useContext(AppDataContext)
   if (context === undefined) throw new Error('AppDataProvider absent.')

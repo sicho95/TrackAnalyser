@@ -169,6 +169,9 @@ importers:
       '@track-analyser/domain':
         specifier: workspace:*
         version: link:../domain
+      '@track-analyser/exporters':
+        specifier: workspace:*
+        version: link:../exporters
       fflate:
         specifier: ^0.8.2
         version: 0.8.3

@@ -11,35 +11,34 @@ export interface RawWriteOptions {
 }
 
 async function opfsAvailable(): Promise<boolean> {
-  return typeof navigator !== 'undefined' && 'storage' in navigator && 'getDirectory' in navigator.storage
+  return (
+    typeof navigator !== 'undefined' &&
+    'storage' in navigator &&
+    typeof navigator.storage.getDirectory === 'function' &&
+    typeof FileSystemFileHandle !== 'undefined' &&
+    'createWritable' in FileSystemFileHandle.prototype
+  )
 }
 
-async function writeOpfs(streamId: string, chunks: AsyncIterable<Uint8Array>): Promise<{ byteLength: number; sha256: string; chunkCount: number }> {
-  const root = await navigator.storage.getDirectory()
-  const directory = await root.getDirectoryHandle('track-analyser-raw', { create: true })
-  const file = await directory.getFileHandle(`${streamId}.bin`, { create: true })
-  const writable = await file.createWritable({ keepExistingData: false })
-  const hasher = sha256.create()
-  let byteLength = 0
-  let chunkCount = 0
+async function openOpfsWritable(streamId: string): Promise<FileSystemWritableFileStream | undefined> {
+  if (!(await opfsAvailable())) return undefined
   try {
-    for await (const chunk of chunks) {
-      await writable.write(chunk as unknown as FileSystemWriteChunkType)
-      hasher.update(chunk)
-      byteLength += chunk.byteLength
-      chunkCount += 1
-    }
-    await writable.close()
-  } catch (error) {
-    await writable.abort()
-    throw error
+    const root = await navigator.storage.getDirectory()
+    const directory = await root.getDirectoryHandle('track-analyser-raw', { create: true })
+    const file = await directory.getFileHandle(`${streamId}.bin`, { create: true })
+    return await file.createWritable({ keepExistingData: false })
+  } catch {
+    return undefined
   }
-  return { byteLength, sha256: bytesToHex(hasher.digest()), chunkCount }
 }
 
-async function writeIndexedDb(streamId: string, chunks: AsyncIterable<Uint8Array>): Promise<{ byteLength: number; sha256: string; chunkCount: number }> {
+async function writeResilient(
+  streamId: string,
+  chunks: AsyncIterable<Uint8Array>,
+): Promise<{ byteLength: number; sha256: string; chunkCount: number; storage: 'OPFS' | 'INDEXED_DB' }> {
   const database = await openTrackAnalyserDatabase()
   const hasher = sha256.create()
+  let writable = await openOpfsWritable(streamId)
   let byteLength = 0
   let chunkCount = 0
   for await (const chunk of chunks) {
@@ -55,23 +54,42 @@ async function writeIndexedDb(streamId: string, chunks: AsyncIterable<Uint8Array
     const existing = await database.get('rawChunks', record.key)
     if (existing !== undefined && existing.sha256 !== hash) throw new Error('Tentative de modification d’un chunk RAW immuable.')
     await database.put('rawChunks', record)
+    if (writable !== undefined) {
+      try {
+        await writable.write(chunk as unknown as FileSystemWriteChunkType)
+      } catch {
+        try { await writable.abort() } catch { /* Conserver le fallback IndexedDB si OPFS échoue. */ }
+        writable = undefined
+      }
+    }
     hasher.update(chunk)
     byteLength += chunk.byteLength
     chunkCount += 1
   }
-  return { byteLength, sha256: bytesToHex(hasher.digest()), chunkCount }
+  if (writable !== undefined) {
+    try {
+      await writable.close()
+    } catch {
+      writable = undefined
+    }
+  }
+  const storage = writable === undefined ? 'INDEXED_DB' : 'OPFS'
+  if (storage === 'OPFS') {
+    const keys = await database.getAllKeysFromIndex('rawChunks', 'streamId', streamId)
+    await Promise.allSettled(keys.map((key) => database.delete('rawChunks', key)))
+  }
+  return { byteLength, sha256: bytesToHex(hasher.digest()), chunkCount, storage }
 }
 
 export class ProgressiveRawStore {
   async write(streamId: string, chunks: AsyncIterable<Uint8Array>, options: RawWriteOptions): Promise<RawDataReference> {
-    const useOpfs = await opfsAvailable()
-    const result = useOpfs ? await writeOpfs(streamId, chunks) : await writeIndexedDb(streamId, chunks)
+    const result = await writeResilient(streamId, chunks)
     return {
       id: streamId,
       sessionId: options.sessionId,
       sourceId: options.sourceId,
-      storage: useOpfs ? 'OPFS' : 'INDEXED_DB',
-      path: useOpfs ? `track-analyser-raw/${streamId}.bin` : streamId,
+      storage: result.storage,
+      path: result.storage === 'OPFS' ? `track-analyser-raw/${streamId}.bin` : streamId,
       mediaType: options.mediaType,
       byteLength: result.byteLength,
       sha256: result.sha256,

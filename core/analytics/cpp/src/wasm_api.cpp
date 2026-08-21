@@ -18,8 +18,3 @@ double ta_percentile(const double* values, std::size_t size, double probability)
 }
 
 }
-
-int main() {
-    return 0;
-}
-

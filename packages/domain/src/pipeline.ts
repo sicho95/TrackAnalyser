@@ -9,6 +9,60 @@ import type {
   Session,
 } from './types'
 
+export function deriveDataset(dataset: PipelineDataset): PipelineDataset {
+  if (dataset.stage !== 'FUSED') throw new Error('La dérivation exige un jeu FUSED.')
+  const channels = new Map(dataset.channels)
+  deriveNumericChannel(channels, 'speed', 'distance', 'm/s')
+  deriveNumericChannel(channels, 'verticalSpeed', 'altitude', 'm/s')
+  deriveNumericChannel(channels, 'jerk', 'acceleration', 'm/s³')
+  return {
+    ...dataset,
+    stage: 'DERIVED',
+    channels: new Map(
+      [...channels.entries()].map(([channel, series]) => [channel, { ...series, samples: series.samples.map((sample) => ({ ...sample, stage: 'DERIVED' as const })) }]),
+    ),
+  }
+}
+
+function deriveNumericChannel(
+  channels: Map<MetricChannel, ChannelSeries>,
+  target: MetricChannel,
+  source: MetricChannel,
+  unit: string,
+): void {
+  if (channels.has(target)) return
+  const sourceSeries = channels.get(source)
+  const sourceSamples = sourceSeries?.samples.filter((sample) => typeof sample.value === 'number') ?? []
+  if (sourceSamples.length < 2 || sourceSeries === undefined) return
+  const samples = sourceSamples.slice(1).flatMap((sample, index) => {
+    const previous = sourceSamples[index]
+    if (previous === undefined) return []
+    const durationSeconds = (sample.timestamp - previous.timestamp) / 1000
+    if (durationSeconds <= 0) return []
+    const value = (Number(sample.value) - Number(previous.value)) / durationSeconds
+    return [{
+      ...sample,
+      channel: target,
+      value,
+      unit,
+      stage: 'DERIVED' as const,
+      provenance: {
+        ...sample.provenance,
+        channel: target,
+        method: `dérivée temporelle du canal ${source}`,
+        original: false,
+      },
+    }]
+  })
+  channels.set(target, {
+    channel: target,
+    unit,
+    samples,
+    provenance: samples.map((sample) => sample.provenance),
+    ...(sourceSeries.selectedSourceId === undefined ? {} : { selectedSourceId: sourceSeries.selectedSourceId }),
+  })
+}
+
 export function createPipelineDataset(
   sessionId: string,
   participantId: string,
@@ -75,4 +129,3 @@ export function validateImportTarget(
     }
   }
 }
-

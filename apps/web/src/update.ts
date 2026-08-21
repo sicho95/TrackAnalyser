@@ -18,4 +18,3 @@ export function registerControlledUpdate(onReady: (controller: UpdateController)
     },
   })
 }
-

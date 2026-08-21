@@ -7,6 +7,7 @@ interface TrackAnalyserJson {
   activityType?: ImportResult['identity']['activityType']
   samples?: SensorSample[]
   metadata?: Record<string, unknown>
+  session?: { activityType?: ImportResult['identity']['activityType'] }
 }
 
 export function parseTrackAnalyserJson(bytes: Uint8Array, fileName: string): ImportResult {
@@ -18,12 +19,13 @@ export function parseTrackAnalyserJson(bytes: Uint8Array, fileName: string): Imp
   if (data.formatVersion !== 1) throw new Error(`Version JSON non prise en charge : ${data.formatVersion}.`)
   const samples = data.samples ?? []
   const sha256 = sha256Hex(bytes)
+  const activityType = data.activityType ?? data.session?.activityType
   return {
     identity: {
       format: 'TRACK_ANALYSER_JSON',
       fileName,
       sha256,
-      ...(data.activityType === undefined ? {} : { activityType: data.activityType }),
+      ...(activityType === undefined ? {} : { activityType }),
       channels: [...new Set(samples.map((sample) => sample.channel))],
     },
     samples,
@@ -33,4 +35,3 @@ export function parseTrackAnalyserJson(bytes: Uint8Array, fileName: string): Imp
     warnings: [],
   }
 }
-

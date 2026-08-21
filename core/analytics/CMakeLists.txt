@@ -27,6 +27,7 @@ if(EMSCRIPTEN AND TRACK_ANALYSER_BUILD_WASM)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/wasm/dist"
     )
     target_link_options(track_analytics_wasm PRIVATE
+        "--no-entry"
         "-sMODULARIZE=1"
         "-sEXPORT_ES6=1"
         "-sENVIRONMENT=web,worker,node"
@@ -35,4 +36,3 @@ if(EMSCRIPTEN AND TRACK_ANALYSER_BUILD_WASM)
         "-sEXPORTED_RUNTIME_METHODS=['cwrap']"
     )
 endif()
-

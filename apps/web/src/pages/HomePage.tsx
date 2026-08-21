@@ -25,7 +25,7 @@ export function HomePage(): ReactNode {
     setStarting(true)
     try {
       const session = await startSession(participantId, activityType, equipmentId || undefined)
-      navigate(`/record/${session.id}`)
+      void navigate(`/record/${session.id}`)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -42,7 +42,7 @@ export function HomePage(): ReactNode {
       </section>
 
       {activeSession === undefined ? (
-        <form className="start-card" onSubmit={(event) => void submit(event)}>
+        <form className="start-card" onSubmit={(event) => { void submit(event) }}>
           <label>Participant<span>Obligatoire</span><select value={participantId} onChange={(event) => setParticipantId(event.target.value)} required>
             <option value="">Choisir un participant</option>
             {participants.filter((participant) => !participant.archived).map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}
@@ -59,11 +59,10 @@ export function HomePage(): ReactNode {
           <button className="primary-button" type="submit" disabled={!ready || participantId.length === 0 || starting}><Play size={20} aria-hidden="true" />{starting ? 'Autorisation des capteurs…' : 'Démarrer la session'}</button>
         </form>
       ) : (
-        <button className="primary-button" type="button" onClick={() => navigate(`/record/${activeSession.id}`)}>Revenir à la session active</button>
+        <button className="primary-button" type="button" onClick={() => { void navigate(`/record/${activeSession.id}`) }}>Revenir à la session active</button>
       )}
 
       <section className="safety-card"><ShieldCheck size={24} aria-hidden="true" /><div><strong>Priorité à la sécurité</strong><p>Démarrer avant de conduire ou piloter. Les détails d’analyse sont disponibles après l’arrêt.</p></div></section>
     </div>
   )
 }
-

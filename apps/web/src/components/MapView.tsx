@@ -25,9 +25,11 @@ export function MapView({ route, provider = 'osm' }: { route: readonly GeoPoint[
     if (container.current === null || route.length === 0) return
     const first = route[0]
     if (first === undefined) return
+    const style = STYLES[provider] ?? STYLES.osm
+    if (style === undefined) return
     const map = new maplibregl.Map({
       container: container.current,
-      style: STYLES[provider] ?? STYLES.osm!,
+      style,
       center: [first.longitude, first.latitude],
       zoom: 13,
       attributionControl: {},

@@ -72,6 +72,16 @@ export function exportSamplesCsv(samples: readonly SensorSample[]): string {
   return [header.join(','), ...lines].join('\n')
 }
 
+export function exportAnalysisCsv(run: AnalysisRun): string {
+  const header = ['metric_id', 'label', 'status', 'value', 'unit', 'sample_count', 'confidence', 'method']
+  const lines = run.result.metrics.map((metric) =>
+    [metric.id, metric.label, metric.status, metric.value ?? '', metric.unit ?? '', metric.sampleCount, metric.confidence, metric.method]
+      .map(csvCell)
+      .join(','),
+  )
+  return [header.join(','), ...lines].join('\n')
+}
+
 export function createTripArchive(input: TripArchiveInput): Uint8Array {
   const manifest: ArchiveManifest = {
     format: 'tatrip',

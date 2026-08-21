@@ -1,16 +1,18 @@
 import { AppShell } from '@track-analyser/ui'
 import { RefreshCw } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAppData } from './context'
-import { ComparePage } from './pages/ComparePage'
-import { HomePage } from './pages/HomePage'
-import { ProfilesPage } from './pages/ProfilesPage'
-import { RecordPage } from './pages/RecordPage'
-import { SessionDetailPage } from './pages/SessionDetailPage'
-import { SessionsPage } from './pages/SessionsPage'
-import { SettingsPage } from './pages/SettingsPage'
+import { canActivateUpdate } from './update-policy'
 import type { UpdateController } from './update'
+
+const HomePage = lazy(async () => ({ default: (await import('./pages/HomePage')).HomePage }))
+const RecordPage = lazy(async () => ({ default: (await import('./pages/RecordPage')).RecordPage }))
+const SessionsPage = lazy(async () => ({ default: (await import('./pages/SessionsPage')).SessionsPage }))
+const SessionDetailPage = lazy(async () => ({ default: (await import('./pages/SessionDetailPage')).SessionDetailPage }))
+const ComparePage = lazy(async () => ({ default: (await import('./pages/ComparePage')).ComparePage }))
+const ProfilesPage = lazy(async () => ({ default: (await import('./pages/ProfilesPage')).ProfilesPage }))
+const SettingsPage = lazy(async () => ({ default: (await import('./pages/SettingsPage')).SettingsPage }))
 
 function UpdateGuard(): ReactNode {
   const { activeSession, settings, updateSettings } = useAppData()
@@ -20,13 +22,13 @@ function UpdateGuard(): ReactNode {
     const listener = (event: Event): void => {
       controller.current = (event as CustomEvent<UpdateController>).detail
       setReady(true)
-      if (activeSession !== undefined) void updateSettings({ ...settings, pendingUpdate: true })
+      if (!canActivateUpdate(activeSession?.id)) void updateSettings({ ...settings, pendingUpdate: true })
     }
     window.addEventListener('track-analyser:update-ready', listener)
     return () => window.removeEventListener('track-analyser:update-ready', listener)
   }, [activeSession, settings, updateSettings])
   useEffect(() => {
-    if (activeSession === undefined && settings.pendingUpdate && controller.current !== undefined) {
+    if (canActivateUpdate(activeSession?.id) && settings.pendingUpdate && controller.current !== undefined) {
       void updateSettings({ ...settings, pendingUpdate: false }).then(() => controller.current?.apply())
     }
   }, [activeSession, settings, updateSettings])
@@ -41,7 +43,7 @@ export function App(): ReactNode {
 }
 
 function RoutesOutlet(): ReactNode {
-  return <Routes>
+  return <Suspense fallback={<div className="loading-screen"><div className="loading-mark" />Chargement de la vue…</div>}><Routes>
     <Route path="/" element={<HomePage />} />
     <Route path="/record/:id" element={<RecordPage />} />
     <Route path="/sessions" element={<SessionsPage />} />
@@ -50,5 +52,5 @@ function RoutesOutlet(): ReactNode {
     <Route path="/profiles" element={<ProfilesPage />} />
     <Route path="/settings" element={<SettingsPage />} />
     <Route path="*" element={<Navigate to="/" replace />} />
-  </Routes>
+  </Routes></Suspense>
 }

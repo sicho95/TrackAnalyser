@@ -31,8 +31,9 @@ export class SessionCheckpointService {
   async complete(session: Session, endTime = new Date().toISOString()): Promise<void> {
     await this.repositories.sessions.put({ ...session, status: 'COMPLETED', endTime, checkpointAt: endTime })
     const settings = await this.repositories.getSettings()
-    const { activeSessionId: _activeSessionId, ...rest } = settings
-    await this.repositories.putSettings(rest)
+    const nextSettings = { ...settings }
+    delete nextSettings.activeSessionId
+    await this.repositories.putSettings(nextSettings)
   }
 
   async recoverInterrupted(): Promise<Session[]> {
@@ -44,4 +45,3 @@ export class SessionCheckpointService {
     return this.repositories.interruptedSessions()
   }
 }
-

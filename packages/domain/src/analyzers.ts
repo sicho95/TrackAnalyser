@@ -13,6 +13,7 @@ import type {
   PipelineDataset,
   Session,
   SessionQuality,
+  SensorSample,
 } from './types'
 
 interface MetricDefinition {
@@ -60,32 +61,45 @@ const ACTIVITY_METRICS: Readonly<Record<ActivityType, readonly MetricDefinition[
     { id: 'slope.mean', label: 'Pente moyenne', unit: '%', derive: meanSlopePercent, method: 'rapport dénivelé sur distance par intervalle' },
   ],
   CAR: [
+    { id: 'speed.median', label: 'Vitesse médiane', channel: 'speed', unit: 'm/s', aggregate: 'median', method: 'médiane des vitesses valides' },
     { id: 'acceleration.longitudinal.p95', label: 'Accélération', channel: 'longitudinalAcceleration', unit: 'm/s²', aggregate: 'p95', method: 'P95 longitudinal' },
+    { id: 'acceleration.events', label: 'Phases d’accélération', unit: 'événements', derive: (context) => thresholdCount(context, 'longitudinalAcceleration', context.profile.parameters.harshAccelerationThresholdMps2 ?? 2.5, 1), method: 'nombre de franchissements du seuil d’accélération du profil' },
     { id: 'braking.minimum', label: 'Freinage maximal', channel: 'longitudinalAcceleration', unit: 'm/s²', aggregate: 'minimum', method: 'minimum longitudinal' },
+    { id: 'braking.events', label: 'Freinages brusques', unit: 'événements', derive: (context) => thresholdCount(context, 'longitudinalAcceleration', context.profile.parameters.harshBrakingThresholdMps2 ?? -3, -1), method: 'nombre de franchissements du seuil de freinage du profil' },
     { id: 'stability.yawRms', label: 'Stabilité de lacet', channel: 'yaw', unit: 'rad', aggregate: 'rms', method: 'RMS du lacet sur portions en mouvement' },
+    { id: 'stability.correctionsPerKm', label: 'Corrections par kilomètre', unit: '/km', derive: correctionsPerKilometer, method: 'inversions du signe latéral rapportées à la distance' },
     { id: 'cornering.lateralP95', label: 'Accélération latérale', channel: 'lateralAcceleration', unit: 'm/s²', aggregate: 'p95', method: 'P95 latéral absolu' },
     { id: 'roll.p95', label: 'Roulis', channel: 'roll', unit: 'rad', aggregate: 'p95', method: 'P95 du roulis calibré' },
     { id: 'pitch.p95', label: 'Tangage', channel: 'pitch', unit: 'rad', aggregate: 'p95', method: 'P95 du tangage calibré' },
+    { id: 'score.fluidity', label: 'Fluidité', unit: '/100', derive: (context) => inverseScore(context, 'jerk', 5), method: 'score 100/(1+RMS jerk/5), profil versionné et valeur physique conservée' },
+    { id: 'score.stability', label: 'Stabilité', unit: '/100', derive: (context) => inverseScore(context, 'lateralAcceleration', 3), method: 'score 100/(1+RMS latéral/3), profil versionné et valeur physique conservée' },
+    { id: 'score.braking', label: 'Freinage', unit: '/100', derive: (context) => inverseScore(context, 'longitudinalAcceleration', 3), method: 'score 100/(1+RMS longitudinal/3), profil versionné et valeur physique conservée' },
   ],
   MOTORCYCLE: [
     { id: 'lean.maximum', label: 'Inclinaison maximale robuste', channel: 'roll', unit: 'rad', aggregate: 'p95', method: 'P95 absolu du roulis moto calibré' },
     { id: 'lean.rms', label: 'Temps sur l’angle', channel: 'roll', unit: 'rad', aggregate: 'rms', method: 'RMS du roulis calibré' },
+    { id: 'lean.duration', label: 'Durée sur l’angle', unit: 's', derive: (context) => durationBeyond(context, 'roll', 0.15), method: 'durée avec roulis absolu supérieur à 0,15 rad' },
+    { id: 'lean.rate', label: 'Vitesse de mise sur l’angle', channel: 'rotationRate', unit: 'rad/s', aggregate: 'p95', method: 'P95 de rotation' },
     { id: 'braking.minimum', label: 'Freinage maximal', channel: 'longitudinalAcceleration', unit: 'm/s²', aggregate: 'minimum', method: 'minimum longitudinal' },
     { id: 'cornering.lateralP95', label: 'Charge latérale', channel: 'lateralAcceleration', unit: 'm/s²', aggregate: 'p95', method: 'P95 latéral' },
     { id: 'lean.symmetry', label: 'Symétrie gauche/droite', unit: '%', derive: signedSymmetry, method: 'écart normalisé des angles gauche et droite' },
+    { id: 'regularity.score', label: 'Régularité', unit: '/100', derive: (context) => regularityScore(context, 'speed'), method: 'inverse du coefficient de variation de vitesse' },
   ],
   BIKE: [
     { id: 'slope.mean', label: 'Pente moyenne', unit: '%', derive: meanSlopePercent, method: 'rapport dénivelé sur distance' },
     { id: 'climb.rate', label: 'Vitesse ascensionnelle', channel: 'verticalSpeed', unit: 'm/s', aggregate: 'p95', method: 'P95 de vitesse verticale' },
     { id: 'vibration.rms', label: 'Vibrations', channel: 'verticalAcceleration', unit: 'm/s²', aggregate: 'rms', method: 'RMS vertical haute fréquence' },
     { id: 'temperature.mean', label: 'Température', channel: 'temperature', unit: '°C', aggregate: 'mean', method: 'moyenne du capteur disponible' },
+    { id: 'slowdown.events', label: 'Ralentissements', unit: 'événements', derive: (context) => thresholdCount(context, 'longitudinalAcceleration', -1.5, -1), method: 'franchissements de -1,5 m/s², seuil du profil V1' },
   ],
   BOAT: [
     { id: 'roll.rms', label: 'Roulis RMS', channel: 'roll', unit: 'rad', aggregate: 'rms', method: 'RMS du roulis' },
     { id: 'pitch.rms', label: 'Tangage RMS', channel: 'pitch', unit: 'rad', aggregate: 'rms', method: 'RMS du tangage' },
     { id: 'heading.stability', label: 'Stabilité du cap', channel: 'yaw', unit: 'rad', aggregate: 'rms', method: 'RMS du lacet, sans prétention de hauteur de vague' },
     { id: 'impact.p95', label: 'Impacts', channel: 'verticalAcceleration', unit: 'm/s²', aggregate: 'p95', method: 'P95 vertical' },
+    { id: 'impact.count', label: 'Nombre d’impacts', unit: 'événements', derive: (context) => thresholdCount(context, 'verticalAcceleration', context.profile.parameters.vibrationImpactThresholdMps2 ?? 8, 1), method: 'franchissements du seuil d’impact versionné' },
     { id: 'agitation.index', label: 'Agitation rencontrée', channel: 'acceleration', unit: 'm/s²', aggregate: 'rms', method: 'RMS dynamique non assimilé à une hauteur de vague' },
+    { id: 'oscillation.frequency', label: 'Fréquence d’oscillation', unit: 'Hz', derive: (context) => zeroCrossingFrequency(context, 'roll'), method: 'demi-fréquence des passages par zéro du roulis' },
   ],
   AIRCRAFT: [
     { id: 'climb.rate', label: 'Taux de montée', channel: 'verticalSpeed', unit: 'm/s', aggregate: 'maximum', method: 'maximum vertical observé' },
@@ -93,11 +107,15 @@ const ACTIVITY_METRICS: Readonly<Record<ActivityType, readonly MetricDefinition[
     { id: 'roll.p95', label: 'Roulis', channel: 'roll', unit: 'rad', aggregate: 'p95', method: 'P95 du roulis' },
     { id: 'pitch.p95', label: 'Tangage', channel: 'pitch', unit: 'rad', aggregate: 'p95', method: 'P95 du tangage' },
     { id: 'vibration.rms', label: 'Vibrations', channel: 'acceleration', unit: 'm/s²', aggregate: 'rms', method: 'RMS dynamique' },
+    { id: 'stability.score', label: 'Stabilité', unit: '/100', derive: (context) => inverseScore(context, 'rotationRate', 0.2), method: 'score explicable par RMS de rotation et seuil versionné' },
   ],
   PARAGLIDING: [
     { id: 'vario.mean', label: 'Vario moyen', channel: 'verticalSpeed', unit: 'm/s', aggregate: 'mean', method: 'moyenne verticale signée' },
     { id: 'vario.maximum', label: 'Ascendance maximale', channel: 'verticalSpeed', unit: 'm/s', aggregate: 'maximum', method: 'maximum vertical observé' },
     { id: 'thermal.gain', label: 'Gain en thermique', unit: 'm', derive: thermalGain, method: 'gain cumulé au-dessus du seuil thermique versionné' },
+    { id: 'thermal.count', label: 'Thermiques', unit: 'événements', derive: thermalCount, method: 'séquences ascendantes dépassant durée et seuil du profil' },
+    { id: 'ascending.time', label: 'Temps ascendant', unit: 's', derive: (context) => signedVerticalDuration(context, 1), method: 'durée au-dessus du seuil de montée versionné' },
+    { id: 'descending.time', label: 'Temps descendant', unit: 's', derive: (context) => signedVerticalDuration(context, -1), method: 'durée sous le seuil de descente versionné' },
     { id: 'groundGlideRatio', label: 'Finesse sol', unit: ':1', derive: groundGlideRatio, method: 'distance horizontale sur altitude perdue, sans correction du vent' },
     { id: 'turn.rate', label: 'Taux de rotation', channel: 'rotationRate', unit: 'rad/s', aggregate: 'mean', method: 'moyenne de rotation en thermique' },
   ],
@@ -106,6 +124,7 @@ const ACTIVITY_METRICS: Readonly<Record<ActivityType, readonly MetricDefinition[
     { id: 'moving.time', label: 'Temps en mouvement', unit: 's', derive: movingTimeSeconds, method: 'intervalles au-dessus du seuil de vitesse versionné' },
     { id: 'pause.time', label: 'Temps de pause', unit: 's', derive: pauseTimeSeconds, method: 'durée totale moins temps en mouvement' },
     { id: 'slope.mean', label: 'Pente moyenne', unit: '%', derive: meanSlopePercent, method: 'rapport dénivelé sur distance' },
+    { id: 'regularity.score', label: 'Régularité', unit: '/100', derive: (context) => regularityScore(context, 'speed'), method: 'inverse du coefficient de variation de vitesse' },
   ],
   TRAIL_RUNNING: [
     { id: 'pace.moving', label: 'Allure en mouvement', unit: 's/km', derive: movingPaceSecondsPerKilometer, method: 'allure hors pauses selon profil' },
@@ -113,6 +132,7 @@ const ACTIVITY_METRICS: Readonly<Record<ActivityType, readonly MetricDefinition[
     { id: 'climb.rate', label: 'Vitesse ascensionnelle', channel: 'verticalSpeed', unit: 'm/s', aggregate: 'p95', method: 'P95 vertical' },
     { id: 'strideLength.mean', label: 'Longueur de foulée', channel: 'strideLength', unit: 'm', aggregate: 'mean', method: 'moyenne des foulées importées' },
     { id: 'verticalOscillation.mean', label: 'Oscillation verticale', channel: 'verticalOscillation', unit: 'm', aggregate: 'mean', method: 'moyenne de dynamique de course' },
+    { id: 'regularity.score', label: 'Régularité', unit: '/100', derive: (context) => regularityScore(context, 'speed'), method: 'inverse du coefficient de variation de vitesse' },
   ],
   RUNNING: [
     { id: 'pace.mean', label: 'Allure moyenne', unit: 's/km', derive: paceSecondsPerKilometer, method: 'durée rapportée à la distance' },
@@ -121,6 +141,8 @@ const ACTIVITY_METRICS: Readonly<Record<ActivityType, readonly MetricDefinition[
     { id: 'groundContactTime.mean', label: 'Temps de contact au sol', channel: 'groundContactTime', unit: 'ms', aggregate: 'mean', method: 'moyenne de dynamique de course' },
     { id: 'verticalOscillation.mean', label: 'Oscillation verticale', channel: 'verticalOscillation', unit: 'm', aggregate: 'mean', method: 'moyenne de dynamique de course' },
     { id: 'verticalRatio.mean', label: 'Ratio vertical', channel: 'verticalRatio', unit: '%', aggregate: 'mean', method: 'moyenne de dynamique de course' },
+    { id: 'splits.kilometerCount', label: 'Splits kilométriques complets', unit: 'splits', derive: (context) => { const distance = totalDistanceMeters(context); return distance === undefined ? undefined : Math.floor(distance / 1000) }, method: 'nombre de kilomètres complets issus de la distance conservée' },
+    { id: 'regularity.score', label: 'Régularité', unit: '/100', derive: (context) => regularityScore(context, 'speed'), method: 'inverse du coefficient de variation de vitesse' },
   ],
 }
 
@@ -222,6 +244,85 @@ function groundGlideRatio(context: AnalyzerContext): number | undefined {
   return distance === undefined || loss === undefined || loss <= 0 ? undefined : distance / loss
 }
 
+function thresholdCount(context: AnalyzerContext, channel: MetricChannel, threshold: number, direction: 1 | -1): number | undefined {
+  const values = context.numeric(channel)
+  if (values.length === 0) return undefined
+  let count = 0
+  let active = false
+  values.forEach((value) => {
+    const exceeds = direction === 1 ? value >= threshold : value <= threshold
+    if (exceeds && !active) count += 1
+    active = exceeds
+  })
+  return count
+}
+
+function durationBeyond(context: AnalyzerContext, channel: MetricChannel, absoluteThreshold: number): number | undefined {
+  const samples = context.series(channel)?.samples.filter((sample) => typeof sample.value === 'number')
+  if (samples === undefined || samples.length < 2) return undefined
+  return samples.slice(1).reduce((sum, sample, index) => {
+    const previous = samples[index]
+    return previous !== undefined && Math.abs(Number(sample.value)) >= absoluteThreshold ? sum + (sample.timestamp - previous.timestamp) / 1000 : sum
+  }, 0)
+}
+
+function regularityScore(context: AnalyzerContext, channel: MetricChannel): number | undefined {
+  const summary = statistics(context.numeric(channel))
+  if (summary === undefined || Math.abs(summary.mean) <= Number.EPSILON) return undefined
+  return Math.max(0, Math.min(100, 100 / (1 + summary.standardDeviation / Math.abs(summary.mean))))
+}
+
+function inverseScore(context: AnalyzerContext, channel: MetricChannel, reference: number): number | undefined {
+  const summary = statistics(context.numeric(channel))
+  return summary === undefined ? undefined : Math.max(0, Math.min(100, 100 / (1 + summary.rms / reference)))
+}
+
+function correctionsPerKilometer(context: AnalyzerContext): number | undefined {
+  const values = context.numeric('lateralAcceleration')
+  const distance = totalDistanceMeters(context)
+  if (values.length < 2 || distance === undefined || distance <= 0) return undefined
+  const corrections = values.slice(1).filter((value, index) => Math.sign(value) !== Math.sign(values[index] ?? value)).length
+  return corrections / (distance / 1000)
+}
+
+function zeroCrossingFrequency(context: AnalyzerContext, channel: MetricChannel): number | undefined {
+  const series = context.series(channel)?.samples.filter((sample) => typeof sample.value === 'number')
+  if (series === undefined || series.length < 2) return undefined
+  const duration = ((series.at(-1)?.timestamp ?? 0) - (series[0]?.timestamp ?? 0)) / 1000
+  if (duration <= 0) return undefined
+  const crossings = series.slice(1).filter((sample, index) => Math.sign(Number(sample.value)) !== Math.sign(Number(series[index]?.value ?? sample.value))).length
+  return crossings / (2 * duration)
+}
+
+function thermalCount(context: AnalyzerContext): number | undefined {
+  const samples = context.series('verticalSpeed')?.samples.filter((sample) => typeof sample.value === 'number')
+  if (samples === undefined || samples.length < 2) return undefined
+  const threshold = context.profile.parameters.climbThresholdMps ?? 0.3
+  const minimumDuration = context.profile.parameters.thermalMinimumDurationSeconds ?? 20
+  let start: number | undefined
+  let count = 0
+  samples.forEach((sample, index) => {
+    const climbing = Number(sample.value) >= threshold
+    if (climbing && start === undefined) start = sample.timestamp
+    if ((!climbing || index === samples.length - 1) && start !== undefined) {
+      if ((sample.timestamp - start) / 1000 >= minimumDuration) count += 1
+      start = undefined
+    }
+  })
+  return count
+}
+
+function signedVerticalDuration(context: AnalyzerContext, direction: 1 | -1): number | undefined {
+  const samples = context.series('verticalSpeed')?.samples.filter((sample) => typeof sample.value === 'number')
+  if (samples === undefined || samples.length < 2) return undefined
+  const threshold = direction === 1 ? context.profile.parameters.climbThresholdMps ?? 0.3 : context.profile.parameters.sinkThresholdMps ?? -0.5
+  return samples.slice(1).reduce((sum, sample, index) => {
+    const previous = samples[index]
+    const qualifies = direction === 1 ? Number(sample.value) >= threshold : Number(sample.value) <= threshold
+    return previous !== undefined && qualifies ? sum + (sample.timestamp - previous.timestamp) / 1000 : sum
+  }, 0)
+}
+
 function uniqueProvenance(series: ChannelSeries | undefined): MetricProvenance[] {
   return series?.provenance.filter((item, index, values) => values.findIndex((candidate) => candidate.sourceId === item.sourceId && candidate.channel === item.channel) === index) ?? []
 }
@@ -300,6 +401,56 @@ function eventsFor(context: AnalyzerContext): AnalysisEvent[] {
       }
     })
   }
+  if (context.profile.activityType === 'BOAT') {
+    const threshold = context.profile.parameters.vibrationImpactThresholdMps2 ?? 8
+    context.series('verticalAcceleration')?.samples.forEach((sample) => {
+      if (typeof sample.value === 'number' && Math.abs(sample.value) >= threshold) {
+        events.push({ id: `impact-${sample.timestamp}`, type: 'IMPACT', startTime: sample.timestamp, endTime: sample.timestamp, severity: Math.abs(sample.value), metrics: { verticalAcceleration: sample.value } })
+      }
+    })
+  }
+  if (context.profile.activityType === 'MOTORCYCLE') {
+    context.series('roll')?.samples.forEach((sample) => {
+      if (typeof sample.value === 'number' && Math.abs(sample.value) >= 0.35) {
+        events.push({ id: `lean-${sample.timestamp}`, type: sample.value < 0 ? 'LEAN_LEFT' : 'LEAN_RIGHT', startTime: sample.timestamp, endTime: sample.timestamp, severity: Math.abs(sample.value), metrics: { roll: sample.value } })
+      }
+    })
+  }
+  if (context.profile.activityType === 'AIRCRAFT') events.push(...aircraftPhases(context))
+  return events
+}
+
+function aircraftPhases(context: AnalyzerContext): AnalysisEvent[] {
+  const speeds = context.series('speed')?.samples.filter((sample) => typeof sample.value === 'number') ?? []
+  const vertical = context.series('verticalSpeed')?.samples.filter((sample) => typeof sample.value === 'number') ?? []
+  const firstSpeed = speeds[0]
+  if (firstSpeed === undefined) return []
+  const verticalAt = (timestamp: number): number => {
+    const closest = vertical.reduce<SensorSample | undefined>((selected, sample) =>
+      selected === undefined || Math.abs(sample.timestamp - timestamp) < Math.abs(selected.timestamp - timestamp) ? sample : selected,
+    undefined)
+    return Number(closest?.value ?? 0)
+  }
+  const phaseAt = (sample: SensorSample): string => {
+    const speed = Number(sample.value)
+    const climb = verticalAt(sample.timestamp)
+    if (speed < 3) return 'GROUND_STOP'
+    if (speed < 20) return 'TAXI'
+    if (climb > 1) return speed < 35 ? 'TAKEOFF' : 'CLIMB'
+    if (climb < -1) return speed < 35 ? 'APPROACH' : 'DESCENT'
+    return 'CRUISE'
+  }
+  const events: AnalysisEvent[] = []
+  let phase = phaseAt(firstSpeed)
+  let start = firstSpeed.timestamp
+  speeds.slice(1).forEach((sample, index) => {
+    const nextPhase = phaseAt(sample)
+    if (nextPhase !== phase || index === speeds.length - 2) {
+      events.push({ id: `flight-${phase}-${start}`, type: phase, startTime: start, endTime: sample.timestamp, metrics: {} })
+      phase = nextPhase
+      start = sample.timestamp
+    }
+  })
   return events
 }
 
@@ -389,6 +540,7 @@ export function executeAnalysis(
   options: AnalysisExecutionOptions,
 ): AnalysisRun {
   if (session.participantId !== dataset.participantId) throw new Error('Le jeu de données appartient à un autre participant.')
+  if (dataset.stage !== 'DERIVED') throw new Error('L’analyse exige un jeu de données DERIVED.')
   const result = ACTIVITY_ANALYZERS[session.activityType].analyze(dataset, profile)
   const inputFingerprint = deterministicHash({
     participantId: dataset.participantId,
@@ -410,6 +562,7 @@ export function executeAnalysis(
     isOriginal,
     metricsReference: `analysis/${inputFingerprint}/metrics.json`,
     eventsReference: `analysis/${inputFingerprint}/events.json`,
+    scoresReference: `analysis/${inputFingerprint}/scores.json`,
     qualityReference: `analysis/${inputFingerprint}/quality.json`,
     result,
     inputFingerprint,

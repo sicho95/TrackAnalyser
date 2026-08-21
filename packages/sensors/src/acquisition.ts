@@ -18,10 +18,11 @@ class AsyncChunkQueue implements AsyncIterable<Uint8Array> {
   }
 
   async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
-    while (!this.closed || this.chunks.length > 0) {
-      if (this.chunks.length === 0) await new Promise<void>((resolve) => this.waiters.push(resolve))
+    while (true) {
       const chunk = this.chunks.shift()
       if (chunk !== undefined) yield chunk
+      else if (this.closed) return
+      else await new Promise<void>((resolve) => this.waiters.push(resolve))
     }
   }
 }
@@ -66,8 +67,10 @@ export class AcquisitionCoordinator {
     })
     this.sources.forEach((source) => this.unsubscribe.push(source.subscribe((sample) => void this.onSample(sample))))
     try {
-      await Promise.all(this.sources.map((source) => source.start()))
-      this.state = { ...this.state, status: 'RECORDING' }
+      const starts = await Promise.allSettled(this.sources.map((source) => source.start()))
+      const errors = starts.flatMap((result) => result.status === 'rejected' ? [String(result.reason)] : [])
+      if (errors.length === starts.length) throw new Error(`Aucune source disponible : ${errors.join(' ; ')}`)
+      this.state = { ...this.state, status: 'RECORDING', sourceErrors: errors }
     } catch (error) {
       this.state = { ...this.state, status: 'ERROR', sourceErrors: [...this.state.sourceErrors, String(error)] }
       await this.stopSources()
@@ -103,4 +106,3 @@ export class AcquisitionCoordinator {
     await Promise.allSettled(this.sources.map((source) => source.stop()))
   }
 }
-

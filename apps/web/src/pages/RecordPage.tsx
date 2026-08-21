@@ -33,7 +33,7 @@ export function RecordPage(): ReactNode {
   const stop = async (): Promise<void> => {
     setStopping(true)
     const session = await stopSession()
-    navigate(`/sessions/${session.id}`)
+    void navigate(`/sessions/${session.id}`)
   }
 
   return (
@@ -52,4 +52,3 @@ export function RecordPage(): ReactNode {
     </div>
   )
 }
-
