@@ -1,7 +1,7 @@
 # TrackAnalyser — Spécification maître unifiée
 
 **Statut :** spécification fonctionnelle, technique, matérielle et produit autoritaire  
-**Version du document :** 1.3  
+**Version du document :** 1.4
 **Date :** 21 août 2026  
 **Dépôt applicatif :** `sicho95/TrackAnalyser`  
 **Mémoire SichoBrain :** `200_PROJECTS/TrackAnalyzer/SPEC.md`
@@ -230,6 +230,8 @@ Si l’appareil ou le fichier est déjà associé à un participant, le suggére
 
 Une session similaire appartenant à un autre participant peut être proposée pour rattachement au même `ActivityGroup`, jamais pour fusion.
 
+Depuis le détail d’une Session, l’action « Enrichir cette session » doit accepter au minimum GPX, TCX, FIT et les formats TrackAnalyser compatibles. Dans ce contexte, le Participant et la Session cible sont verrouillés par la Session consultée et affichés avant confirmation. Le moteur doit alors rejouer l’ensemble des RAW déjà rattachés plus le nouveau fichier, fusionner par canal et produire un nouvel `AnalysisRun`. Il ne doit pas analyser uniquement le dernier fichier ni remplacer silencieusement les mesures antérieures.
+
 ---
 
 # 6. Equipment
@@ -246,6 +248,8 @@ interface Equipment {
 ```
 
 Exemples : voiture, moto, vélo, parapente, bateau, avion. `equipmentId` reste optionnel pour marche, trail ou course à pied.
+
+L’iconographie d’un équipement doit être déterminée par son `type` normalisé. Une voiture doit utiliser une icône automobile, une moto une icône moto, un vélo une icône vélo, etc. Une valeur historique ou localisée doit être normalisée avant le choix de l’icône ; une icône vélo générique ne doit pas servir de fallback visuel à tous les équipements.
 
 ---
 
@@ -402,6 +406,23 @@ Calibration automatique :
 5. reconstruire le repère de l’activité ;
 6. produire une qualité de calibration ;
 7. conserver la matrice dans la session.
+
+## 10.1. Démarrage d’une Session sur smartphone
+
+L’écran de démarrage reprend par défaut le Participant, l’activité et l’équipement de la dernière Session réellement lancée. L’utilisateur peut modifier ces trois choix avant chaque départ. Ces préférences sont conservées dans les réglages sauvegardables, et non déduites de la dernière Session importée.
+
+Après l’action « Démarrer » :
+
+1. demander les permissions sensibles, notamment `DeviceMotion`, pendant le geste utilisateur requis par iOS ;
+2. afficher un compte à rebours de cinq secondes ;
+3. permettre l’annulation pendant le compte à rebours sans créer de Session ni de RAW ;
+4. demander de fixer le téléphone et de ne plus le déplacer ;
+5. observer les mesures pendant ces cinq secondes pour estimer le zéro de fixation et sa qualité ;
+6. ne pas inclure les mesures du compte à rebours dans le RAW de la Session ;
+7. à l’issue du compte à rebours, conserver un `CalibrationSnapshot`, créer réellement la Session puis démarrer l’écriture progressive ;
+8. si `DeviceMotion` reste indisponible, démarrer avec GNSS et les autres sources disponibles sans inventer les canaux IMU.
+
+Le zéro immobile corrige le biais de fixation observable. L’identification complète du repère de l’activité peut continuer pendant le déplacement à partir de la gravité, du GNSS et des phases dynamiques. La qualité doit refléter cette différence et ne pas présenter une projection écran comme une calibration véhicule parfaite.
 
 Pour les vibrations fines, signaler qu’une fixation plus rigide et reproductible est nécessaire.
 
@@ -637,6 +658,8 @@ L’UI convertit selon les préférences.
 
 Par défaut : système métrique.
 
+Pour les activités terrestres en système métrique, afficher notamment la vitesse en `km/h` dans les vues principales, tout en conservant `m/s` dans le pipeline interne et la vue technique de provenance lorsque pertinent.
+
 Prévoir configuration d’unités pour autres pays et activités : km/h, mph, nœuds, ft, ft/min, °C/°F, etc.
 
 ---
@@ -829,6 +852,8 @@ V1.1 :
 
 L’absence de cartes hors ligne V1.0 ne doit jamais empêcher l’enregistrement et l’analyse offline.
 
+Dans le récapitulatif d’une Session, la carte doit pouvoir passer en plein écran puis revenir au récapitulatif sans perdre son état. Le sélecteur de fond standard/topographique doit être accessible directement sur la carte réduite et sur la carte plein écran. Le choix est persisté dans les réglages. La trace et les analyses restent consultables lorsque le fond réseau ne charge pas.
+
 ---
 
 # 27. UI/UX générale
@@ -859,6 +884,18 @@ Réglages
 UI V1 en français.
 
 Toutes les chaînes doivent être externalisées dès la V1 afin d’ajouter l’anglais en V1.1 sans refonte.
+
+## 27.1. Liste et suppression des Sessions
+
+Sur mobile, chaque bulle de Session suit une interaction de glissement de type iOS :
+
+- glissement de gauche vers la droite : révéler les exports JSON, CSV et `.tatrip` ;
+- glissement de droite vers la gauche : révéler la suppression ;
+- ne pas ajouter un menu « … » redondant lorsque toutes ses actions sont déjà accessibles par glissement et dans le détail ;
+- présenter les rails d’action comme la continuité arrondie de la bulle, sans boutons carrés détachés ;
+- conserver une translucidité premium de la façade, mais suffisamment opaque et floutée pour ne pas laisser lire les boutons masqués sous la Session.
+
+La suppression doit aussi être accessible au bas du détail d’une Session. Toute suppression est explicite et exige deux confirmations successives indiquant que les RAW, analyses et segments locaux seront supprimés. Aucun nettoyage automatique ne doit supprimer ces données.
 
 ---
 
@@ -946,6 +983,8 @@ Présenter une synthèse visuelle avant les détails techniques :
 
 Les tableaux de données brutes doivent être réservés à une vue technique avancée.
 
+Dans le récapitulatif principal, ne rendre que les métriques dont le statut est `AVAILABLE`. Ne pas remplir l’expérience principale de blocs « Indisponible ». Lorsqu’un enrichissement apporte un nouveau canal, les blocs correspondants apparaissent après réanalyse. Les motifs d’indisponibilité, canaux absents et diagnostics restent accessibles dans la vue technique.
+
 ## 28.5. Comparaison
 
 Utiliser des graphiques permettant une comparaison immédiate :
@@ -993,9 +1032,20 @@ Ne pas utiliser le maximum seul comme métrique principale lorsqu’il peut êtr
 
 # 30. Segments, événements et ComparableContext
 
-Permettre segmentation automatique et manuelle, reconnaissance de portions GPS et comparaison d’événements similaires.
+Les `Segment` de parcours V1 sont détectés automatiquement ; l’utilisateur ne définit pas manuellement leur début et leur fin.
 
-Exemples : même montée, même virage, même descente, même thermique, même transition.
+Un tronçon comparable est une portion de trace GPS observée au moins deux fois, dans une même Session ou plusieurs Sessions, avec un coefficient minimal de similarité par défaut de 90 %. Le seuil, la distance minimale, la tolérance GPS, l’espacement de rééchantillonnage et le nombre minimal d’occurrences appartiennent à un profil versionné et calibrable, jamais à des constantes UI.
+
+La reconnaissance doit :
+
+- rééchantillonner spatialement les traces pour réduire la dépendance aux cadences GNSS ;
+- comparer des points correspondants avec une tolérance métrique adaptée à la qualité GPS ;
+- exiger la même direction de parcours et refuser une trace inversée, même si sa géométrie est identique ;
+- regrouper les occurrences qui se recouvrent afin d’éviter une multitude de fenêtres quasi identiques ;
+- conserver pour chaque occurrence la Session, les bornes temporelles, la signature de route, la version de l’algorithme et la qualité de correspondance ;
+- ne jamais fusionner les Sessions ni les Participants qui partagent un tronçon.
+
+Exemples : même montée dans le même sens, même virage abordé dans le même sens, même descente ou même portion de boucle. Les événements analytiques comme un freinage ou un thermique restent des `Event` et ne doivent pas être transformés automatiquement en segments GPS.
 
 `ComparableContext` décrit les conditions d’une comparaison équitable : type, pente, rayon, vitesse, durée, altitude, qualité, etc.
 
@@ -1162,6 +1212,8 @@ V1 :
 - `PhoneMotionSensorSource`
 - `PhoneLocationSensorSource`
 - `ImportedFileSource`
+
+Sur iOS, la demande de permission `DeviceMotionEvent.requestPermission()` doit être déclenchée depuis l’action explicite de démarrage. La source doit rester indépendante du modèle commercial du téléphone, publier ses axes bruts originaux séparément des projections calculées et conserver la méthode/qualité du zéro de fixation.
 
 Prévoir sans refonte : `RemoteDeviceSource`.
 
@@ -1481,7 +1533,15 @@ La V1 est acceptable si notamment :
 25. le cœur analytique se compile en WASM et dispose d’une voie ESP-IDF/C++ native ;
 26. GitHub Actions valide puis déploie GitHub Pages ;
 27. les tests multi-participant empêchent toute contamination ;
-28. la fixture Garmin réelle passe les tests d’import et de conservation.
+28. la fixture Garmin réelle passe les tests d’import et de conservation ;
+29. le démarrage reprend les derniers choix et laisse cinq secondes annulables avant la création du RAW ;
+30. le zéro de fixation est conservé avec sa qualité et les mesures préparatoires ne contaminent pas le RAW ;
+31. la carte de récapitulatif passe en plein écran et change de fond dans les deux modes ;
+32. l’enrichissement GPX/TCX/FIT est accessible depuis la Session et rejoue tous ses RAW ;
+33. les métriques indisponibles sont absentes du récapitulatif principal mais explicables techniquement ;
+34. les segments GPS sont détectés automatiquement à partir d’au moins deux occurrences comparables ;
+35. une même trace parcourue en sens inverse n’est pas déclarée comparable ;
+36. les exports et la suppression sont accessibles par glissement, et la suppression exige deux confirmations.
 
 ---
 
@@ -1512,7 +1572,7 @@ Ne pas :
 - lier le domaine à l’automobile ;
 - fusionner deux participants parce que leurs traces se ressemblent ;
 - importer sans participant cible ;
-- supprimer les RAW ;
+- supprimer automatiquement ou silencieusement les RAW ; une suppression locale explicitement demandée et doublement confirmée par l’utilisateur reste autorisée ;
 - écraser une analyse historique ;
 - moyenner arbitrairement des capteurs ;
 - produire des scores opaques ;

@@ -5,7 +5,7 @@ Cette matrice complète `SPEC.md` sans le remplacer.
 | Critère | Preuve dans le dépôt |
 |---|---|
 | PWA iOS, Pages, HashRouter, offline | manifeste, `vite.config.ts`, `sw.ts`, CI et E2E offline Chromium |
-| Session smartphone | permission DeviceMotion déclenchée dans le geste iOS, Geolocation, axes bruts et repère écran, diagnostic par source, acquisition progressive et checkpoints |
+| Session smartphone | derniers choix persistés, permission DeviceMotion dans le geste iOS, compte à rebours annulable, zéro de fixation hors RAW, Geolocation, diagnostic, acquisition progressive et checkpoints |
 | Participant obligatoire | domaine, écran de démarrage/import et tests multi-participant |
 | Dix analyseurs | registre exhaustif et test paramétré sur les dix activités |
 | RAW immuable | OPFS avec miroir/fallback IndexedDB, SHA-256, test de réécriture interdite |
@@ -13,14 +13,14 @@ Cette matrice complète `SPEC.md` sans le remplacer.
 | FIT réel | SDK officiel, fixture de 122 330 octets, 1 319 records et champs inconnus |
 | Fusion par canal | `DataFusionEngine`, provenance et tests AUTO/FUSION |
 | Historique | AnalysisProfile/AnalysisRun, profils immutables, original/dernier et réanalyse manuelle depuis les RAW |
-| Segments | détection depuis les événements durables, création manuelle depuis le RAW, empreinte GPS, contexte comparable et persistance séparée |
-| Import/export | FIT, GPX, TCX, Apple XML, JSON, `.tatrip` v2 avec segments, CSV, `.tabackup` v2 complet |
-| Cartographie | MapLibre, OSM/OpenTopoMap interchangeables, analyse sans carte |
+| Segments | détection GPS automatique à 90 %, rééchantillonnage spatial, regroupement des occurrences, même sens obligatoire et persistance séparée |
+| Import/export | enrichissement verrouillé depuis le détail, replay de tous les RAW, FIT, GPX, TCX, Apple XML, JSON, `.tatrip` v2, CSV, `.tabackup` v2 complet |
+| Cartographie | MapLibre, OSM/OpenTopoMap interchangeables sur carte réduite et plein écran, analyse sans carte |
 | Visualisations | registre, courbes, histogrammes, jauges signées et huit axes de comparaison à échelle commune |
 | Internationalisation | catalogue français typé, copies principales externalisées et navigation injectée dans le paquet UI |
 | C++/WASM/ESP-IDF | CMake, CTest, Emscripten et composant firmware commun |
 | Hot refresh sûr | version distante, prompt, persistance `pendingUpdate`, blocage pendant session et test de politique |
-| Gestion des sessions | icônes selon le type, métriques disponibles uniquement, exports par glissement et suppression RAW/métadonnées à double confirmation |
+| Gestion des sessions | icônes selon le type, métriques disponibles uniquement, façade glissable lisible sans menu redondant, exports et suppression à double confirmation |
 
 ## Validations qui restent matérielles
 

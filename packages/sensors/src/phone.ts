@@ -1,4 +1,5 @@
 import type {
+  CalibrationSnapshot,
   DeviceProfile,
   GeoPoint,
   MetricChannel,
@@ -41,6 +42,9 @@ export class PhoneMotionSensorSource extends BrowserSensorSource {
   private permission: 'UNKNOWN' | 'GRANTED' | 'DENIED' | 'NOT_REQUIRED' = 'UNKNOWN'
   private gravity = { x: 0, y: 0, z: 0 }
   private gravityInitialized = false
+  private collectingMountingZero = false
+  private mountingSamples: Array<{ longitudinal: number; lateral: number; vertical: number }> = []
+  private mountingZero: { longitudinal: number; lateral: number; vertical: number; quality: number } | undefined
 
   constructor(deviceId: string) {
     super()
@@ -69,6 +73,7 @@ export class PhoneMotionSensorSource extends BrowserSensorSource {
   }
 
   async start(): Promise<void> {
+    if (this.active) return
     if (typeof DeviceMotionEvent === 'undefined') throw new Error('DeviceMotion indisponible sur cet appareil.')
     if (!(await this.requestPermission())) throw new Error('Permission de mouvement refusée.')
     window.addEventListener('devicemotion', this.onMotion)
@@ -76,8 +81,39 @@ export class PhoneMotionSensorSource extends BrowserSensorSource {
   }
 
   async stop(): Promise<void> {
+    if (!this.active) return
     window.removeEventListener('devicemotion', this.onMotion)
     this.active = false
+  }
+
+  beginMountingZero(): void {
+    this.mountingSamples = []
+    this.mountingZero = undefined
+    this.collectingMountingZero = true
+  }
+
+  completeMountingZero(deviceId: string): CalibrationSnapshot | undefined {
+    this.collectingMountingZero = false
+    if (this.mountingSamples.length < 5) return undefined
+    const longitudinal = mean(this.mountingSamples.map((sample) => sample.longitudinal))
+    const lateral = mean(this.mountingSamples.map((sample) => sample.lateral))
+    const vertical = mean(this.mountingSamples.map((sample) => sample.vertical))
+    const deviation = Math.sqrt(mean(this.mountingSamples.map((sample) =>
+      (sample.longitudinal - longitudinal) ** 2 + (sample.lateral - lateral) ** 2 + (sample.vertical - vertical) ** 2,
+    )))
+    const coverage = Math.min(1, this.mountingSamples.length / 50)
+    const quality = Math.min(0.75, coverage / (1 + deviation / 0.18))
+    this.mountingZero = { longitudinal, lateral, vertical, quality }
+    return {
+      id: `calibration-${deviceId}-${crypto.randomUUID()}`,
+      deviceId,
+      createdAt: new Date().toISOString(),
+      quality,
+      // Projeter d'abord les axes du smartphone dans le repère de l'écran.
+      matrix: [0, 1, 0, 1, 0, 0, 0, 0, 1],
+      biases: [longitudinal, lateral, vertical],
+      method: `Zéro de fixation immobile sur ${this.mountingSamples.length} mesures DeviceMotion`,
+    }
   }
 
   async getCapabilities(): Promise<SensorCapabilities> {
@@ -93,14 +129,23 @@ export class PhoneMotionSensorSource extends BrowserSensorSource {
       const x = acceleration.x ?? 0
       const y = acceleration.y ?? 0
       const z = acceleration.z ?? 0
+      const screenFrame = this.toScreenFrame(x, y)
+      if (this.collectingMountingZero) {
+        // Mesurer uniquement le zéro avant l'enregistrement afin de ne jamais intégrer le compte à rebours aux RAW.
+        this.mountingSamples.push({ longitudinal: screenFrame.y, lateral: screenFrame.x, vertical: z })
+        if (this.mountingSamples.length > 1_000) this.mountingSamples.shift()
+        return
+      }
       this.emit(this.sample(timestamp, 'acceleration', Math.hypot(x, y, z), 'm/s²'))
       this.emit(this.sample(timestamp, 'custom:acceleration-x', x, 'm/s²'))
       this.emit(this.sample(timestamp, 'custom:acceleration-y', y, 'm/s²'))
       this.emit(this.sample(timestamp, 'custom:acceleration-z', z, 'm/s²'))
-      const screenFrame = this.toScreenFrame(x, y)
-      this.emit(this.sample(timestamp, 'lateralAcceleration', screenFrame.x, 'm/s²', false, 'Projection dans le repère écran non calibré'), 0.55)
-      this.emit(this.sample(timestamp, 'longitudinalAcceleration', screenFrame.y, 'm/s²', false, 'Projection dans le repère écran non calibré'), 0.55)
-      this.emit(this.sample(timestamp, 'verticalAcceleration', z, 'm/s²', false, 'Axe vertical du smartphone non calibré'), 0.55)
+      const zero = this.mountingZero
+      const method = zero === undefined ? 'Projection dans le repère écran non calibré' : 'Projection dans le repère écran avec zéro de fixation'
+      const qualityCeiling = zero === undefined ? 0.55 : Math.min(0.75, 0.5 + zero.quality / 3)
+      this.emit(this.sample(timestamp, 'lateralAcceleration', screenFrame.x - (zero?.lateral ?? 0), 'm/s²', false, method), qualityCeiling)
+      this.emit(this.sample(timestamp, 'longitudinalAcceleration', screenFrame.y - (zero?.longitudinal ?? 0), 'm/s²', false, method), qualityCeiling)
+      this.emit(this.sample(timestamp, 'verticalAcceleration', z - (zero?.vertical ?? 0), 'm/s²', false, method), qualityCeiling)
     }
     if (event.rotationRate !== null) {
       const alpha = ((event.rotationRate.alpha ?? 0) * Math.PI) / 180
@@ -156,6 +201,10 @@ export class PhoneMotionSensorSource extends BrowserSensorSource {
       provenance: { sourceId: this.sourceId, channel, sampleCount: 1, coverage: 0, quality: 0, method, original },
     }
   }
+}
+
+function mean(values: readonly number[]): number {
+  return values.reduce((total, value) => total + value, 0) / Math.max(1, values.length)
 }
 
 export class PhoneLocationSensorSource extends BrowserSensorSource {

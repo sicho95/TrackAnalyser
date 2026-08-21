@@ -14,6 +14,8 @@ Le flux d’import impose cet ordre :
 
 `validateImportTarget` refuse explicitement une session d’un autre participant. Les tests utilisent deux sessions aux mêmes horaires et vérifient cette interdiction.
 
+Dans le détail d’une Session, la cible est déjà connue : le sélecteur de fichier affiche le Participant et la Session verrouillés avant confirmation. L’enrichissement conserve le binaire original, rejoue toutes les références RAW de la Session avec le nouveau fichier, puis crée un nouvel `AnalysisRun`. Il ne cherche jamais une Session ressemblante d’un autre Participant et n’analyse pas uniquement la dernière source ajoutée.
+
 ## ActivityGroup
 
 `ActivityGroup` représente la sortie commune. L’association ajoute son identifiant aux sessions, sans déplacer leurs RAW ni leurs analyses. La comparaison peut ensuite afficher des participants différents dans le même groupe.

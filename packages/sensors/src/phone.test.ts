@@ -44,4 +44,27 @@ describe('source DeviceMotion du smartphone', () => {
     await expect(source.requestPermission()).resolves.toBe(false)
     await expect(source.start()).rejects.toThrow(/indisponible/i)
   })
+
+  it('étalonne le zéro de fixation sans publier le compte à rebours dans les RAW', async () => {
+    vi.stubGlobal('DeviceMotionEvent', GrantedMotionEvent)
+    const source = new PhoneMotionSensorSource('phone')
+    const samples: import('@track-analyser/domain').SensorSample[] = []
+    source.subscribe((sample) => samples.push(sample))
+
+    await source.start()
+    source.beginMountingZero()
+    for (let index = 0; index < 60; index += 1) window.dispatchEvent(new GrantedMotionEvent('devicemotion'))
+    const calibration = source.completeMountingZero('phone')
+
+    expect(samples).toHaveLength(0)
+    expect(calibration?.method).toMatch(/Zéro de fixation/)
+    expect(calibration?.biases[0]).toBeCloseTo(-0.5)
+    expect(calibration?.biases[1]).toBeCloseTo(1.25)
+    expect(calibration?.biases[2]).toBeCloseTo(0.2)
+    window.dispatchEvent(new GrantedMotionEvent('devicemotion'))
+    expect(samples.find((sample) => sample.channel === 'longitudinalAcceleration')?.value).toBeCloseTo(0)
+    expect(samples.find((sample) => sample.channel === 'lateralAcceleration')?.value).toBeCloseTo(0)
+    expect(samples.find((sample) => sample.channel === 'longitudinalAcceleration')?.provenance.method).toMatch(/zéro de fixation/)
+    await source.stop()
+  })
 })

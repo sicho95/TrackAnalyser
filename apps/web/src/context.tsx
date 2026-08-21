@@ -1,10 +1,9 @@
 import {
   DEFAULT_ANALYSIS_PROFILES,
-  automaticSegments,
   attachAnalysisRun,
-  createSegment,
   createPipelineDataset,
   createVersionedAnalysisProfile,
+  detectRecurringRouteSegments,
   deriveDataset,
   executeAnalysis,
   transitionDataset,
@@ -43,12 +42,13 @@ interface AppData {
   addParticipant(name: string): Promise<Participant>
   addEquipment(name: string, type: string): Promise<Equipment>
   createActivityGroup(sessionIds: string[], title?: string): Promise<ActivityGroup>
-  startSession(participantId: string, activityType: ActivityType, equipmentId?: string): Promise<Session>
+  prepareSessionStart(participantId: string, activityType: ActivityType, equipmentId?: string): Promise<{ motionAvailable: boolean }>
+  commitPreparedSession(): Promise<Session>
+  cancelPreparedSession(): Promise<void>
   stopSession(): Promise<Session>
   importData(result: ImportResult, participantId: string, sessionId?: string): Promise<Session>
   createAnalysisProfile(baseProfileId: string, version: string, name: string, parameters: Readonly<Record<string, number>>): Promise<AnalysisProfile>
   reanalyzeSession(sessionId: string, profileId: string): Promise<AnalysisRun>
-  createManualSegment(sessionId: string, name: string, startPercent: number, endPercent: number): Promise<Segment>
   deleteSession(sessionId: string): Promise<void>
   updateSettings(settings: AppSettings): Promise<void>
   refresh(): Promise<void>
@@ -81,6 +81,15 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
   const [acquisitionStatus, setAcquisitionStatus] = useState('IDLE')
   const [acquisitionErrors, setAcquisitionErrors] = useState<string[]>([])
   const coordinator = useRef<AcquisitionCoordinator | undefined>(undefined)
+  const preparedStart = useRef<{
+    participantId: string
+    activityType: ActivityType
+    equipmentId?: string
+    phone: ReturnType<typeof createObservedPhoneProfile>
+    motion: PhoneMotionSensorSource
+    location: PhoneLocationSensorSource
+    motionAvailable: boolean
+  } | undefined>(undefined)
   const liveSamplesRef = useRef<SensorSample[]>([])
   const polling = useRef<number | undefined>(undefined)
 
@@ -163,30 +172,81 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     return group
   }, [refresh, repositories, sessions])
 
-  const startSession = useCallback(async (participantId: string, activityType: ActivityType, equipmentId?: string): Promise<Session> => {
+  const prepareSessionStart = useCallback(async (participantId: string, activityType: ActivityType, equipmentId?: string): Promise<{ motionAvailable: boolean }> => {
     if (repositories === undefined) throw new Error('Stockage non initialisé.')
     if (!participants.some((participant) => participant.id === participantId)) throw new Error('Participant invalide.')
+    if (preparedStart.current !== undefined || activeSession !== undefined) throw new Error('Une session est déjà en préparation ou active.')
     const phone = createObservedPhoneProfile()
     phone.assignedParticipantId = participantId
     const motion = new PhoneMotionSensorSource(phone.id)
     const location = new PhoneLocationSensorSource(phone.id)
     // Déclencher la demande iOS pendant le geste utilisateur, avant tout accès asynchrone au stockage.
-    await motion.requestPermission()
-    await repositories.devices.put(phone)
-    const session: Session = {
-      id: crypto.randomUUID(),
+    let motionAvailable = await motion.requestPermission()
+    if (motionAvailable) {
+      motion.beginMountingZero()
+      try {
+        await motion.start()
+      } catch {
+        // Continuer avec le GPS lorsque le navigateur refuse finalement DeviceMotion.
+        motionAvailable = false
+      }
+    }
+    preparedStart.current = {
       participantId,
       activityType,
       ...(equipmentId === undefined || equipmentId.length === 0 ? {} : { equipmentId }),
-      sourceIds: [`${phone.id}:motion`, `${phone.id}:geolocation`],
+      phone,
+      motion,
+      location,
+      motionAvailable,
+    }
+    return { motionAvailable }
+  }, [activeSession, participants, repositories])
+
+  const cancelPreparedSession = useCallback(async (): Promise<void> => {
+    const prepared = preparedStart.current
+    preparedStart.current = undefined
+    if (prepared !== undefined) await prepared.motion.stop()
+  }, [])
+
+  const commitPreparedSession = useCallback(async (): Promise<Session> => {
+    if (repositories === undefined) throw new Error('Stockage non initialisé.')
+    const prepared = preparedStart.current
+    if (prepared === undefined) throw new Error('Aucune session préparée.')
+    preparedStart.current = undefined
+    const calibration = prepared.motionAvailable ? prepared.motion.completeMountingZero(prepared.phone.id) : undefined
+    const phone = calibration === undefined ? prepared.phone : {
+      ...prepared.phone,
+      calibrationProfiles: [calibration.id],
+      updatedAt: new Date().toISOString(),
+    }
+    if (calibration !== undefined) await repositories.calibrations.put(calibration)
+    await repositories.devices.put(phone)
+    const session: Session = {
+      id: crypto.randomUUID(),
+      participantId: prepared.participantId,
+      activityType: prepared.activityType,
+      ...(prepared.equipmentId === undefined ? {} : { equipmentId: prepared.equipmentId }),
+      sourceIds: [`${prepared.phone.id}:motion`, `${prepared.phone.id}:geolocation`],
       startTime: new Date().toISOString(),
       schemaVersion: __SCHEMA_VERSION__,
       rawDataReferences: [],
       analysisRunIds: [],
       status: 'DRAFT',
+      ...(calibration === undefined ? {} : { calibration }),
     }
     await repositories.sessions.put(session)
-    const sources = [motion, location]
+    const nextSettings: AppSettings = {
+      ...settings,
+      lastSessionDefaults: {
+        participantId: prepared.participantId,
+        activityType: prepared.activityType,
+        ...(prepared.equipmentId === undefined ? {} : { equipmentId: prepared.equipmentId }),
+      },
+    }
+    await repositories.putSettings(nextSettings)
+    setSettings(nextSettings)
+    const sources = [prepared.motion, prepared.location]
     sources.forEach((source) => source.subscribe((sample) => {
       liveSamplesRef.current.push(sample)
       if (liveSamplesRef.current.length > 50_000) liveSamplesRef.current.splice(0, liveSamplesRef.current.length - 50_000)
@@ -209,7 +269,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     }, 200)
     await refresh()
     return session
-  }, [participants, refresh, repositories])
+  }, [refresh, repositories, settings])
 
   const stopSession = useCallback(async (): Promise<Session> => {
     if (repositories === undefined || activeSession === undefined || coordinator.current === undefined) throw new Error('Aucune session active.')
@@ -221,9 +281,9 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     const samples = await replayRawSamples([reference], new ProgressiveRawStore())
     const run = analyzeSession(completed, samples, [], DEFAULT_ANALYSIS_PROFILES[completed.activityType])
     await repositories.analysisRuns.put(run)
-    await persistAutomaticSegments(completed, run, samples, repositories)
     const withAnalysis = attachAnalysisRun(completed, run)
     await repositories.sessions.put(withAnalysis)
+    await refreshAutomaticSegments(repositories)
     coordinator.current = undefined
     setActiveSession(undefined)
     setAcquisitionStatus('IDLE')
@@ -266,13 +326,15 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
       rawDataReferences: [...baseSession.rawDataReferences, reference],
       sourceIds: [...new Set([...baseSession.sourceIds, ...result.samples.map((sample) => sample.sourceId)])],
     }
+    const { replayRawSamples } = await import('./reanalysis')
+    const combinedSamples = await replayRawSamples(sessionWithRaw.rawDataReferences, rawStore)
     const previousRuns = analysisRuns.filter((run) => run.sessionId === sessionWithRaw.id)
-    const run = analyzeSession(sessionWithRaw, result.samples, previousRuns, DEFAULT_ANALYSIS_PROFILES[sessionWithRaw.activityType])
+    const run = analyzeSession(sessionWithRaw, combinedSamples, previousRuns, DEFAULT_ANALYSIS_PROFILES[sessionWithRaw.activityType])
     await repositories.analysisRuns.put(run)
-    await persistAutomaticSegments(sessionWithRaw, run, result.samples, repositories)
     const finalSession = attachAnalysisRun(sessionWithRaw, run)
     await repositories.sessions.put(finalSession)
     await Promise.all(importedSegments(result.metadata, finalSession.id).map((segment) => repositories.segments.put(segment)))
+    await refreshAutomaticSegments(repositories)
     await refresh()
     return finalSession
   }, [analysisRuns, participants, refresh, repositories, sessions])
@@ -310,49 +372,11 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     const candidate = analyzeSession(session, samples, previousRuns, profile)
     const run = previousRuns.find((existing) => existing.id === candidate.id) ?? candidate
     if (!previousRuns.some((existing) => existing.id === run.id)) await repositories.analysisRuns.put(run)
-    await persistAutomaticSegments(session, run, samples, repositories)
     await repositories.sessions.put(attachAnalysisRun(session, run))
+    await refreshAutomaticSegments(repositories)
     await refresh()
     return run
   }, [activeSession, analysisProfiles, analysisRuns, refresh, repositories, sessions])
-
-  const createManualSegment = useCallback(async (
-    sessionId: string,
-    name: string,
-    startPercent: number,
-    endPercent: number,
-  ): Promise<Segment> => {
-    if (repositories === undefined) throw new Error('Stockage non initialisé.')
-    if (activeSession !== undefined) throw new Error('Terminer la session active avant de créer un segment.')
-    const session = sessions.find((candidate) => candidate.id === sessionId)
-    if (session === undefined) throw new Error('La session est introuvable.')
-    if (!Number.isFinite(startPercent) || !Number.isFinite(endPercent) || startPercent < 0 || endPercent > 100 || startPercent >= endPercent) {
-      throw new Error('Choisir une période comprise entre 0 et 100 %.')
-    }
-    const { replayRawSamples } = await import('./reanalysis')
-    const samples = await replayRawSamples(session.rawDataReferences, new ProgressiveRawStore())
-    let first = Number.POSITIVE_INFINITY
-    let last = Number.NEGATIVE_INFINITY
-    let timestampCount = 0
-    samples.forEach((sample) => {
-      if (!Number.isFinite(sample.timestamp)) return
-      first = Math.min(first, sample.timestamp)
-      last = Math.max(last, sample.timestamp)
-      timestampCount += 1
-    })
-    if (timestampCount < 2 || first >= last) throw new Error('Les RAW ne contiennent pas assez de mesures pour créer un segment.')
-    const segment = createSegment(
-      session,
-      name,
-      first + (last - first) * startPercent / 100,
-      first + (last - first) * endPercent / 100,
-      samples,
-      { manual: true },
-    )
-    await repositories.segments.put(segment)
-    await refresh()
-    return segment
-  }, [activeSession, refresh, repositories, sessions])
 
   const updateSettings = useCallback(async (next: AppSettings): Promise<void> => {
     if (repositories === undefined) throw new Error('Stockage non initialisé.')
@@ -368,6 +392,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     const rawStore = new ProgressiveRawStore()
     for (const reference of session.rawDataReferences) await rawStore.delete(reference)
     await repositories.deleteSessionGraph(sessionId)
+    await refreshAutomaticSegments(repositories)
     await refresh()
   }, [activeSession?.id, refresh, repositories, sessions])
 
@@ -388,28 +413,36 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     addParticipant,
     addEquipment,
     createActivityGroup,
-    startSession,
+    prepareSessionStart,
+    commitPreparedSession,
+    cancelPreparedSession,
     stopSession,
     importData,
     createAnalysisProfile,
     reanalyzeSession,
-    createManualSegment,
     deleteSession,
     updateSettings,
     refresh,
     ...(repositories === undefined ? {} : { repositories }),
-  }), [acquisitionErrors, acquisitionStatus, activeSession, activityGroups, addEquipment, addParticipant, analysisProfiles, analysisRuns, createActivityGroup, createAnalysisProfile, createManualSegment, deleteSession, equipment, importData, liveSamples, participants, reanalyzeSession, repositories, refresh, segments, sessions, settings, startSession, stopSession, updateSettings])
+  }), [acquisitionErrors, acquisitionStatus, activeSession, activityGroups, addEquipment, addParticipant, analysisProfiles, analysisRuns, cancelPreparedSession, commitPreparedSession, createActivityGroup, createAnalysisProfile, deleteSession, equipment, importData, liveSamples, participants, prepareSessionStart, reanalyzeSession, repositories, refresh, segments, sessions, settings, stopSession, updateSettings])
 
   return <AppDataContext value={value}>{children}</AppDataContext>
 }
 
-async function persistAutomaticSegments(
-  session: Session,
-  run: AnalysisRun,
-  samples: readonly SensorSample[],
-  repositories: LocalRepositories,
-): Promise<void> {
-  await Promise.all(automaticSegments(session, run, samples).map((segment) => repositories.segments.put(segment)))
+async function refreshAutomaticSegments(repositories: LocalRepositories): Promise<void> {
+  const [storedSessions, storedRuns, storedSegments] = await Promise.all([
+    repositories.sessions.list(),
+    repositories.analysisRuns.list(),
+    repositories.segments.list(),
+  ])
+  const tracks = storedSessions.flatMap((session) => {
+    const runs = storedRuns.filter((run) => run.sessionId === session.id)
+    const latest = runs.find((run) => run.id === session.latestAnalysisRunId) ?? runs.toSorted((left, right) => left.createdAt.localeCompare(right.createdAt)).at(-1)
+    return latest === undefined || latest.result.routePreview.length < 2 ? [] : [{ session, points: latest.result.routePreview }]
+  })
+  const detected = detectRecurringRouteSegments(tracks)
+  await Promise.all(storedSegments.filter((segment) => !segment.manual).map((segment) => repositories.segments.delete(segment.id)))
+  await Promise.all(detected.map((segment) => repositories.segments.put(segment)))
 }
 
 function importedSegments(metadata: Readonly<Record<string, unknown>>, sessionId: string): Segment[] {

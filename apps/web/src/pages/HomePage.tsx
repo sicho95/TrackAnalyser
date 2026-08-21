@@ -1,32 +1,84 @@
 import { ACTIVITY_TYPES, type ActivityType } from '@track-analyser/domain'
 import { ScreenHeader, StatusPill } from '@track-analyser/ui'
-import { Navigation, Play, ShieldCheck } from 'lucide-react'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { Navigation, Play, ShieldCheck, Smartphone } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../context'
 import { messages } from '../i18n'
 
 export function HomePage(): ReactNode {
-  const { participants, equipment, activeSession, startSession, ready } = useAppData()
-  const [participantId, setParticipantId] = useState(participants[0]?.id ?? '')
+  const { participants, equipment, activeSession, settings, prepareSessionStart, commitPreparedSession, cancelPreparedSession, ready } = useAppData()
+  const [participantId, setParticipantId] = useState('')
   const [activityType, setActivityType] = useState<ActivityType>('GENERIC')
   const [equipmentId, setEquipmentId] = useState('')
   const [error, setError] = useState('')
-  const [starting, setStarting] = useState(false)
+  const [phase, setPhase] = useState<'IDLE' | 'AUTHORIZING' | 'COUNTDOWN' | 'STARTING'>('IDLE')
+  const [countdown, setCountdown] = useState(5)
+  const [motionAvailable, setMotionAvailable] = useState(true)
+  const defaultsApplied = useRef(false)
+  const timer = useRef<number | undefined>(undefined)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (defaultsApplied.current || !ready || participants.length === 0) return
+    const defaults = settings.lastSessionDefaults
+    const selectedParticipant = defaults !== undefined && participants.some((participant) => participant.id === defaults.participantId && !participant.archived)
+      ? defaults.participantId
+      : participants.find((participant) => !participant.archived)?.id ?? ''
+    setParticipantId(selectedParticipant)
+    if (defaults !== undefined) {
+      setActivityType(defaults.activityType)
+      setEquipmentId(defaults.equipmentId !== undefined && equipment.some((item) => item.id === defaults.equipmentId) ? defaults.equipmentId : '')
+    }
+    defaultsApplied.current = true
+  }, [equipment, participants, ready, settings.lastSessionDefaults])
+
+  useEffect(() => () => {
+    if (timer.current !== undefined) window.clearInterval(timer.current)
+    void cancelPreparedSession()
+  }, [cancelPreparedSession])
+
+  const launchAfterCountdown = async (): Promise<void> => {
+    if (timer.current !== undefined) window.clearInterval(timer.current)
+    timer.current = undefined
+    setPhase('STARTING')
+    try {
+      const session = await commitPreparedSession()
+      void navigate(`/record/${session.id}`)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      await cancelPreparedSession()
+      setPhase('IDLE')
+    }
+  }
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault()
     setError('')
-    setStarting(true)
+    setPhase('AUTHORIZING')
     try {
-      const session = await startSession(participantId, activityType, equipmentId || undefined)
-      void navigate(`/record/${session.id}`)
+      const preparation = await prepareSessionStart(participantId, activityType, equipmentId || undefined)
+      setMotionAvailable(preparation.motionAvailable)
+      setCountdown(5)
+      setPhase('COUNTDOWN')
+      const deadline = Date.now() + 5_000
+      timer.current = window.setInterval(() => {
+        const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1_000))
+        setCountdown(remaining)
+        if (remaining === 0) void launchAfterCountdown()
+      }, 100)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setStarting(false)
+      setPhase('IDLE')
     }
+  }
+
+  const cancelCountdown = async (): Promise<void> => {
+    if (timer.current !== undefined) window.clearInterval(timer.current)
+    timer.current = undefined
+    await cancelPreparedSession()
+    setCountdown(5)
+    setPhase('IDLE')
   }
 
   return (
@@ -52,13 +104,22 @@ export function HomePage(): ReactNode {
           </select></label>
           {participants.length === 0 ? <p className="form-notice">{messages.home.participantNotice}</p> : null}
           {error.length === 0 ? null : <p className="error-message">{error}</p>}
-          <button className="primary-button" type="submit" disabled={!ready || participantId.length === 0 || starting}><Play size={20} aria-hidden="true" />{starting ? messages.home.authorizing : messages.home.start}</button>
+          <button className="primary-button" type="submit" disabled={!ready || participantId.length === 0 || phase !== 'IDLE'}><Play size={20} aria-hidden="true" />{phase === 'AUTHORIZING' ? messages.home.authorizing : messages.home.start}</button>
         </form>
       ) : (
         <button className="primary-button" type="button" onClick={() => { void navigate(`/record/${activeSession.id}`) }}>{messages.home.resume}</button>
       )}
 
       <section className="safety-card"><ShieldCheck size={24} aria-hidden="true" /><div><strong>{messages.home.safetyTitle}</strong><p>{messages.home.safetyBody}</p></div></section>
+      {phase === 'COUNTDOWN' || phase === 'STARTING' ? <div className="start-countdown" role="dialog" aria-modal="true" aria-labelledby="start-countdown-title">
+        <div className="countdown-card">
+          <Smartphone size={34} aria-hidden="true" />
+          <p className="countdown-value" aria-live="polite">{phase === 'STARTING' ? '0' : countdown}</p>
+          <h2 id="start-countdown-title">{phase === 'STARTING' ? messages.home.calibrating : messages.home.fixPhone}</h2>
+          <p>{motionAvailable ? messages.home.countdownBody : messages.home.countdownGpsOnly}</p>
+          <button className="secondary-button" type="button" disabled={phase === 'STARTING'} onClick={() => void cancelCountdown()}>{messages.common.cancel}</button>
+        </div>
+      </div> : null}
     </div>
   )
 }
