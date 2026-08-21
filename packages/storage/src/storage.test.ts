@@ -28,6 +28,33 @@ describe('stockage local résilient', () => {
     await expect(store.write('stream-1', chunkBytes(new TextEncoder().encode('changed'), 4), { sessionId: 's', sourceId: 'phone', mediaType: 'application/octet-stream' })).rejects.toThrow(/immuable/i)
   })
 
+  it('supprime tous les chunks RAW associés à une session', async () => {
+    const store = new ProgressiveRawStore()
+    const reference = await store.write('stream-delete', chunkBytes(new TextEncoder().encode('à supprimer'), 3), { sessionId: 'session-delete', sourceId: 'phone', mediaType: 'application/octet-stream' })
+    await store.delete(reference)
+    const bytes: number[] = []
+    for await (const chunk of store.read(reference)) bytes.push(...chunk)
+    expect(bytes).toEqual([])
+  })
+
+  it('supprime atomiquement la session, ses analyses et segments sans effacer les autres participants', async () => {
+    const repositories = await LocalRepositories.open()
+    await repositories.sessions.put({ ...session('session-a', 'damien'), activityGroupId: 'group' })
+    await repositories.sessions.put({ ...session('session-b', 'autre'), activityGroupId: 'group' })
+    await repositories.activityGroups.put({ id: 'group', activityType: 'RUNNING', sessionIds: ['session-a', 'session-b'] })
+    await repositories.analysisRuns.put({ id: 'run-a', sessionId: 'session-a', analysisVersion: '1', analysisProfileVersion: '1', engineBuildId: 'test', createdAt: '2026-08-21T00:00:00.000Z', isOriginal: true, metricsReference: 'm', eventsReference: 'e', result: { activityType: 'RUNNING', metrics: [], events: [], quality: { gnss: 0, imu: 0, clock: 0, calibration: 0, coverage: 0, fusion: 0, confidence: 0 }, warnings: [], visualizationSeries: {}, routePreview: [] }, inputFingerprint: 'raw' })
+    await repositories.segments.put({ id: 'segment-a', sessionId: 'session-a', name: 'A', startTime: 1, endTime: 2, manual: true })
+
+    await repositories.deleteSessionGraph('session-a')
+
+    expect(await repositories.sessions.get('session-a')).toBeUndefined()
+    expect(await repositories.analysisRuns.get('run-a')).toBeUndefined()
+    expect(await repositories.segments.get('segment-a')).toBeUndefined()
+    expect(await repositories.sessions.get('session-b')).toBeDefined()
+    expect(await repositories.activityGroups.get('group')).toBeUndefined()
+    expect((await repositories.sessions.get('session-b'))?.activityGroupId).toBeUndefined()
+  })
+
   it('migre une session historique incomplète sans toucher à ses données', async () => {
     await deleteTrackAnalyserDatabaseForTests()
     await new Promise<void>((resolve, reject) => {

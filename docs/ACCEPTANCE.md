@@ -5,7 +5,7 @@ Cette matrice complète `SPEC.md` sans le remplacer.
 | Critère | Preuve dans le dépôt |
 |---|---|
 | PWA iOS, Pages, HashRouter, offline | manifeste, `vite.config.ts`, `sw.ts`, CI et E2E offline Chromium |
-| Session smartphone | DeviceMotion, Geolocation, permissions, acquisition progressive et checkpoints |
+| Session smartphone | permission DeviceMotion déclenchée dans le geste iOS, Geolocation, axes bruts et repère écran, diagnostic par source, acquisition progressive et checkpoints |
 | Participant obligatoire | domaine, écran de démarrage/import et tests multi-participant |
 | Dix analyseurs | registre exhaustif et test paramétré sur les dix activités |
 | RAW immuable | OPFS avec miroir/fallback IndexedDB, SHA-256, test de réécriture interdite |
@@ -20,6 +20,7 @@ Cette matrice complète `SPEC.md` sans le remplacer.
 | Internationalisation | catalogue français typé, copies principales externalisées et navigation injectée dans le paquet UI |
 | C++/WASM/ESP-IDF | CMake, CTest, Emscripten et composant firmware commun |
 | Hot refresh sûr | version distante, prompt, persistance `pendingUpdate`, blocage pendant session et test de politique |
+| Gestion des sessions | icônes selon le type, métriques disponibles uniquement, exports par glissement et suppression RAW/métadonnées à double confirmation |
 
 ## Validations qui restent matérielles
 

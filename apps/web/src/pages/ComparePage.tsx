@@ -66,13 +66,13 @@ export function ComparePage(): ReactNode {
       const run = runFor(session)
       const selected = values ?? run?.result.visualizationSeries[metric] ?? []
       if (run === undefined || selected.length === 0) return undefined
-      return { id: `${session.id}-${metric}-${label}`, label, unit: unitFor(metric), values: selected, sampleCount: selected.length, coverage: run.result.quality.coverage, confidence: run.result.quality.confidence }
+      return { id: `${session.id}-${metric}-${label}`, label, unit: unitFor(metric), values: displayValues(metric, selected), sampleCount: selected.length, coverage: run.result.quality.coverage, confidence: run.result.quality.confidence }
     }
     const aggregate = (id: string, label: string, selectedSessions: readonly Session[]): ComparisonSeries | undefined => {
       const runs = selectedSessions.flatMap((session) => { const run = runFor(session); return run === undefined ? [] : [run] })
       const values = runs.flatMap((run) => run.result.visualizationSeries[metric] ?? [])
       if (values.length === 0) return undefined
-      return { id, label, unit: unitFor(metric), values, sampleCount: values.length, coverage: average(runs.map((run) => run.result.quality.coverage)), confidence: average(runs.map((run) => run.result.quality.confidence)) }
+      return { id, label, unit: unitFor(metric), values: displayValues(metric, values), sampleCount: values.length, coverage: average(runs.map((run) => run.result.quality.coverage)), confidence: average(runs.map((run) => run.result.quality.confidence)) }
     }
     if (mode === 'SESSION') return compact([
       left === undefined ? undefined : fromSession(left, sessionLabel(left, participants, equipment)),
@@ -115,7 +115,7 @@ export function ComparePage(): ReactNode {
       const session = sessions.find((candidate) => candidate.id === effectiveAnalysisSessionId)
       return compact(analysisRuns.filter((run) => run.sessionId === session?.id).map((run) => {
         const values = run.result.visualizationSeries[metric] ?? []
-        return values.length === 0 ? undefined : { id: run.id, label: `${run.analysisVersion} · profil ${run.analysisProfileVersion}`, unit: unitFor(metric), values, sampleCount: values.length, coverage: run.result.quality.coverage, confidence: run.result.quality.confidence }
+        return values.length === 0 ? undefined : { id: run.id, label: `${run.analysisVersion} · profil ${run.analysisProfileVersion}`, unit: unitFor(metric), values: displayValues(metric, values), sampleCount: values.length, coverage: run.result.quality.coverage, confidence: run.result.quality.confidence }
       }))
     }
     return []
@@ -132,7 +132,7 @@ export function ComparePage(): ReactNode {
     .flatMap((session) => {
       const run = runFor(session)
       const values = run?.result.visualizationSeries[metric] ?? []
-      return values.length === 0 || run === undefined ? [] : [{ session, value: average(values), confidence: run.result.quality.confidence, sampleCount: values.length }]
+      return values.length === 0 || run === undefined ? [] : [{ session, value: average(displayValues(metric, values)), confidence: run.result.quality.confidence, sampleCount: values.length }]
     }), [activityType, effectiveTemporalParticipantId, metric, runFor, sessions])
 
   const canGroup = left !== undefined && right?.activityType === left.activityType && left.activityGroupId !== right.activityGroupId
@@ -177,4 +177,5 @@ function compact<T>(values: readonly (T | undefined)[]): T[] { return values.fil
 function average(values: readonly number[]): number { return values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length }
 function sessionLabel(session: Session, participants: ReturnType<typeof useAppData>['participants'], equipment: ReturnType<typeof useAppData>['equipment']): string { const participant = participants.find((item) => item.id === session.participantId)?.name ?? '?'; const item = equipment.find((candidate) => candidate.id === session.equipmentId)?.name; return `${participant} · ${session.activityType}${item === undefined ? '' : ` · ${item}`}` }
 function segmentLabel(segment: ReturnType<typeof useAppData>['segments'][number], sessions: Session[], participants: ReturnType<typeof useAppData>['participants'], equipment: ReturnType<typeof useAppData>['equipment']): string { const session = sessions.find((candidate) => candidate.id === segment.sessionId); return session === undefined ? segment.name : `${segment.name} · ${sessionLabel(session, participants, equipment)}` }
-function unitFor(metric: string): string { return metric === 'speed' ? 'm/s' : metric === 'heartRate' ? 'bpm' : metric === 'cadence' ? 'rpm' : metric === 'power' ? 'W' : metric === 'altitude' ? 'm' : '' }
+function displayValues(metric: string, values: readonly number[]): number[] { return metric === 'speed' ? values.map((value) => value * 3.6) : [...values] }
+function unitFor(metric: string): string { return metric === 'speed' ? 'km/h' : metric === 'heartRate' ? 'bpm' : metric === 'cadence' ? 'rpm' : metric === 'power' ? 'W' : metric === 'altitude' ? 'm' : '' }
