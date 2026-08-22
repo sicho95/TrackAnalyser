@@ -18,4 +18,12 @@ Une calibration équipement doit déterminer matrice, biais et qualité pour tra
 
 ## Résilience
 
-Le coordinateur écrit chaque mesure dans un flux NDJSON progressif, conserve une fenêtre courte pour l’écran et produit des checkpoints. Les erreurs d’une source restent isolées : si DeviceMotion échoue, Geolocation continue, et inversement tant qu’une source reste active.
+Le coordinateur crée et persiste `Session.activeRawStreamId` avant de démarrer les sources. Il écrit ensuite chaque mesure dans un flux NDJSON progressif, conserve une fenêtre courte pour l’écran et produit des checkpoints. Les erreurs d’une source restent isolées : si DeviceMotion échoue, Geolocation continue, et inversement tant qu’une source reste active.
+
+L’action d’arrêt signifie désormais « arrêter et sauvegarder ». Elle attend seulement la fermeture du flux, son empreinte et le rattachement de la référence RAW. La Session devient alors immédiatement consultable avec `analysisStatus: PENDING`. L’analyse est lancée séparément ; les états `PENDING` et `RUNNING` sans `AnalysisRun` sont repris automatiquement au prochain chargement. Un échec est signalé sans déclasser la Session ni son RAW.
+
+## Écran actif et stabilité Safari
+
+Pendant l’acquisition, `ScreenWakeLockController` demande `navigator.wakeLock.request('screen')`, expose son état et réacquiert le verrou au retour de visibilité. Il le libère après la sauvegarde. Le navigateur peut toujours lever ce verrou pour raisons système ; les chunks et checkpoints restent donc la protection autoritaire.
+
+La vue d’enregistrement utilise une grille bornée à `100dvh`. Les cartes ont des pistes de hauteur stables et masquent la navigation générale. Le remplacement d’un état d’attente par une jauge ou une courbe ne change pas la hauteur du document et le bouton d’arrêt reste visible sans défilement.

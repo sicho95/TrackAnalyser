@@ -8,9 +8,11 @@ L’acquisition ne garde qu’une fenêtre récente pour l’affichage et un tam
 
 `ProgressiveRawStore` écrit dans OPFS lorsque `navigator.storage.getDirectory` est disponible. Le fallback stocke des chunks IndexedDB indexés par `streamId`. Chaque référence contient la taille, le nombre de chunks et le SHA-256 du flux complet.
 
+Pendant une acquisition OPFS, chaque chunk reste également miré dans IndexedDB jusqu’à ce que la référence finale soit rattachée à la Session. `activeRawStreamId` est inscrit avant la première mesure. Si le processus disparaît, `recoverReference` contrôle l’ordre et le SHA-256 de chaque chunk, reconstruit l’empreinte globale et rattache une référence `INDEXED_DB` à la Session. Le miroir OPFS n’est nettoyé en tâche différée qu’après le commit métier et une relecture réussie par l’analyse ; une suspension intermédiaire laisse donc le fallback intact.
+
 Les objets métier sont accessibles uniquement par `LocalRepositories`. Le schéma IndexedDB 4 ajoute un store `segments`, indexé par session et empreinte de route. Les migrations créent les stores progressivement et marquent comme interrompues les anciennes sessions incomplètes sans toucher à leurs références RAW.
 
-Une écriture sous une clé RAW existante avec un contenu différent est refusée. Les checkpoints enregistrent l’identifiant de session active. Au prochain lancement, une session encore `RECORDING` devient `INTERRUPTED` et peut être retrouvée.
+Une écriture sous une clé RAW existante avec un contenu différent est refusée. Les checkpoints enregistrent l’identifiant de Session active et celui de son flux. Au prochain lancement, une Session encore `RECORDING` avec des chunks valides devient `COMPLETED`, reçoit sa référence RAW et passe en analyse `PENDING`. Sans chunk récupérable, elle devient `INTERRUPTED`. Dans les deux cas, `AppSettings.activeSessionId` est effacé pour éviter un verrou fantôme.
 
 La suppression explicite d’une session efface son fichier OPFS ou ses chunks IndexedDB, puis supprime atomiquement la session, ses AnalysisRuns et ses segments. Les ActivityGroups sont mis à jour sans toucher aux sessions des autres participants. L’interface exige deux confirmations ; une sauvegarde préalable reste le seul moyen de restauration.
 
