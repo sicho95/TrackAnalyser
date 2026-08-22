@@ -29,10 +29,17 @@ function groupBySource(series: ChannelSeries): Map<string, SensorSample[]> {
 
 function sourceScore(samples: readonly SensorSample[]): number {
   if (samples.length === 0) return 0
-  const quality = samples.reduce((sum, sample) => sum + sample.quality, 0) / samples.length
-  const coverage = samples.reduce((sum, sample) => sum + sample.provenance.coverage, 0) / samples.length
-  const accuracyScores = samples.map((sample) => (sample.accuracy === undefined ? 0.75 : 1 / (1 + Math.max(0, sample.accuracy))))
-  const accuracy = accuracyScores.reduce((sum, value) => sum + value, 0) / accuracyScores.length
+  let qualityTotal = 0
+  let coverageTotal = 0
+  let accuracyTotal = 0
+  samples.forEach((sample) => {
+    qualityTotal += sample.quality
+    coverageTotal += sample.provenance.coverage
+    accuracyTotal += sample.accuracy === undefined ? 0.75 : 1 / (1 + Math.max(0, sample.accuracy))
+  })
+  const quality = qualityTotal / samples.length
+  const coverage = coverageTotal / samples.length
+  const accuracy = accuracyTotal / samples.length
   const durationSeconds = Math.max(0.001, ((samples.at(-1)?.timestamp ?? 0) - (samples[0]?.timestamp ?? 0)) / 1000)
   const frequencyFactor = Math.min(1, samples.length / durationSeconds / 10)
   return quality * 0.45 + coverage * 0.3 + accuracy * 0.15 + frequencyFactor * 0.1
@@ -60,7 +67,7 @@ function weightedMedian(samples: readonly SensorSample[]): SensorSample {
     ...selected,
     sourceId: `fusion:${samples.map((sample) => sample.sourceId).toSorted().join('+')}`,
     value: selected.value,
-    quality: Math.max(...samples.map((sample) => sample.quality)),
+    quality: samples.reduce((maximum, sample) => Math.max(maximum, sample.quality), 0),
     provenance: {
       ...selected.provenance,
       sourceId: samples.map((sample) => sample.sourceId).toSorted().join('+'),
@@ -103,8 +110,8 @@ function selectedSeries(series: ChannelSeries, policy: ChannelFusionPolicy): { s
         selectedSourceIds: allSourceIds,
         rejectedSourceIds: [],
         reason: 'Conserver toutes les séries originales sans agrégation.',
-        quality: Math.max(...[...sources.values()].map(sourceScore)),
-        coverage: Math.max(...series.provenance.map((item) => item.coverage), 0),
+        quality: [...sources.values()].reduce((maximum, sourceSamples) => Math.max(maximum, sourceScore(sourceSamples)), 0),
+        coverage: series.provenance.reduce((maximum, item) => Math.max(maximum, item.coverage), 0),
         switches: 0,
       },
     }
@@ -121,7 +128,7 @@ function selectedSeries(series: ChannelSeries, policy: ChannelFusionPolicy): { s
         rejectedSourceIds: [],
         reason: 'Appliquer une médiane pondérée robuste sur un canal continu autorisé ; conserver les originaux en provenance.',
         quality: samples.reduce((sum, sample) => sum + sample.quality, 0) / Math.max(1, samples.length),
-        coverage: Math.max(...series.provenance.map((item) => item.coverage), 0),
+        coverage: series.provenance.reduce((maximum, item) => Math.max(maximum, item.coverage), 0),
         switches: 0,
       },
     }

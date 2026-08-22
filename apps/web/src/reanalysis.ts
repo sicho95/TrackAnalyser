@@ -15,16 +15,16 @@ export async function replayRawSamples(
   const acceptedChannels = channels === undefined ? undefined : new Set(channels)
   for (const reference of references) {
     if (reference.mediaType === 'application/x-ndjson') {
-      samples.push(...await decodeSampleNdjson(reader.read(reference), acceptedChannels))
+      appendSamples(samples, await decodeSampleNdjson(reader.read(reference), acceptedChannels))
       continue
     }
     const bytes = await collectBytes(reader.read(reference))
     if (reference.importedFileName?.toLowerCase().endsWith('.tatrip') === true) {
-      samples.push(...replayTripArchive(bytes, acceptedChannels))
+      appendSamples(samples, replayTripArchive(bytes, acceptedChannels))
       continue
     }
     const fileName = reference.importedFileName ?? inferFileName(reference)
-    samples.push(...filterChannels(parseImportedFile(bytes, fileName).samples, acceptedChannels))
+    appendSamples(samples, filterChannels(parseImportedFile(bytes, fileName).samples, acceptedChannels))
   }
   return samples.toSorted((left, right) => left.timestamp - right.timestamp || (left.sequence ?? 0) - (right.sequence ?? 0))
 }
@@ -87,6 +87,10 @@ function appendAcceptedSample(samples: SensorSample[], sample: SensorSample, acc
 
 function filterChannels(samples: readonly SensorSample[], acceptedChannels?: ReadonlySet<MetricChannel>): SensorSample[] {
   return acceptedChannels === undefined ? [...samples] : samples.filter((sample) => acceptedChannels.has(sample.channel))
+}
+
+function appendSamples(target: SensorSample[], values: readonly SensorSample[]): void {
+  values.forEach((sample) => target.push(sample))
 }
 
 function inferFileName(reference: RawDataReference): string {

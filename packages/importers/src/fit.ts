@@ -1,5 +1,5 @@
 import { Decoder, Profile, Stream, type Mesg, type MesgDefinition, type RecordMesg } from '@garmin/fitsdk'
-import type { ActivityType, ImportResult, MetricChannel, OpaqueImportRecord, SensorSample } from '@track-analyser/domain'
+import { finiteExtent, type ActivityType, type ImportResult, type MetricChannel, type OpaqueImportRecord, type SensorSample } from '@track-analyser/domain'
 import { createImportedSample, parseTimestamp, semicirclesToDegrees, serializableValue, sha256Hex } from './shared'
 
 interface FitRecordMapping {
@@ -102,7 +102,7 @@ export function parseFit(bytes: Uint8Array, fileName: string): ImportResult {
     mesgListener: (messageNumber, message) => {
       const index = messageCounts.get(messageNumber) ?? 0
       messageCounts.set(messageNumber, index + 1)
-      opaqueRecords.push(...opaqueFields(messageNumber, message, index))
+      opaqueFields(messageNumber, message, index).forEach((field) => opaqueRecords.push(field))
       if (messageNumber === Profile.MesgNum.RECORD) records.push(message as RecordMesg)
     },
     fieldDescriptionListener: (key, developerDataId, fieldDescription) => {
@@ -129,6 +129,7 @@ export function parseFit(bytes: Uint8Array, fileName: string): ImportResult {
   const sourceId = `fit:${sha256}`
   const samples = records.flatMap((record) => mapRecord(record, fileName, sourceId))
   const timestamps = samples.map((sample) => sample.timestamp)
+  const timestampExtent = finiteExtent(timestamps)
   const channels = [...new Set(samples.map((sample) => sample.channel))]
   const activityType = inferActivityType(messages as unknown as Record<string, unknown>)
   return {
@@ -136,7 +137,7 @@ export function parseFit(bytes: Uint8Array, fileName: string): ImportResult {
       format: 'FIT',
       fileName,
       sha256,
-      ...(timestamps.length === 0 ? {} : { startTime: new Date(Math.min(...timestamps)).toISOString(), endTime: new Date(Math.max(...timestamps)).toISOString() }),
+      ...(timestampExtent === undefined ? {} : { startTime: new Date(timestampExtent[0]).toISOString(), endTime: new Date(timestampExtent[1]).toISOString() }),
       activityType,
       channels,
     },

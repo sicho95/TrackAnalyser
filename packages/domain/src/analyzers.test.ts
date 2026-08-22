@@ -1,4 +1,4 @@
-import { ACTIVITY_TYPES, attachAnalysisRun, comparableEventValues, createPipelineDataset, createVersionedAnalysisProfile, DEFAULT_ANALYSIS_PROFILES, deriveDataset, executeAnalysis, normalizedSegment, transitionDataset } from './index'
+import { ACTIVITY_TYPES, attachAnalysisRun, comparableEventValues, createPipelineDataset, createVersionedAnalysisProfile, DEFAULT_ANALYSIS_PROFILES, deriveDataset, executeAnalysis, normalizedSegment, transitionDataset, type RawDataReference } from './index'
 import { describe, expect, it } from 'vitest'
 import { sample, session } from '../../../tests/helpers'
 
@@ -36,6 +36,24 @@ describe('analyseurs V1', () => {
     const right = executeAnalysis(currentSession, fused, DEFAULT_ANALYSIS_PROFILES.RUNNING, [], options)
     expect(right).toEqual(left)
     expect(right.inputFingerprint).toBe(left.inputFingerprint)
+  })
+
+  it('fonde l’empreinte volumétrique sur le contenu RAW immutable', () => {
+    const raw = createPipelineDataset('raw-fingerprint', 'damien', samples, 'RAW')
+    const fused = deriveDataset({ ...transitionDataset(raw, 'NORMALIZED'), stage: 'FUSED' as const })
+    const reference: RawDataReference = {
+      id: 'raw-reference', sessionId: 'raw-fingerprint', sourceId: 'phone', storage: 'INDEXED_DB' as const, path: 'raw',
+      mediaType: 'application/x-ndjson', byteLength: 100, sha256: 'raw-sha-a', chunkCount: 1, immutable: true,
+      createdAt: '2026-08-23T00:00:00.000Z',
+    }
+    const currentSession = { ...session('raw-fingerprint', 'damien', 'RUNNING'), rawDataReferences: [reference] }
+    const options = { analysisVersion: '1.0.1', engineBuildId: 'test', now: '2026-08-23T00:00:00.000Z' }
+    const first = executeAnalysis(currentSession, fused, DEFAULT_ANALYSIS_PROFILES.RUNNING, [], options)
+    const same = executeAnalysis(currentSession, fused, DEFAULT_ANALYSIS_PROFILES.RUNNING, [], options)
+    const changed = executeAnalysis({ ...currentSession, rawDataReferences: [{ ...reference, sha256: 'raw-sha-b' }] }, fused, DEFAULT_ANALYSIS_PROFILES.RUNNING, [], options)
+
+    expect(same.inputFingerprint).toBe(first.inputFingerprint)
+    expect(changed.inputFingerprint).not.toBe(first.inputFingerprint)
   })
 
   it('conserve l’analyse originale quand une nouvelle version est attachée', () => {

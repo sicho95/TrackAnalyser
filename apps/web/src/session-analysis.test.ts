@@ -11,15 +11,17 @@ const raw: RawDataReference = {
 describe('reprise des analyses initiales', () => {
   it('reprend une analyse absente, en attente ou interrompue après sauvegarde du RAW', () => {
     const saved = { ...session('session', 'damien'), rawDataReferences: [raw] }
-    expect(needsInitialAnalysis(saved)).toBe(true)
-    expect(needsInitialAnalysis({ ...saved, analysisStatus: 'PENDING' })).toBe(true)
-    expect(needsInitialAnalysis({ ...saved, analysisStatus: 'RUNNING' })).toBe(true)
+    expect(needsInitialAnalysis(saved, '1.0.1')).toBe(true)
+    expect(needsInitialAnalysis({ ...saved, analysisStatus: 'PENDING' }, '1.0.1')).toBe(true)
+    expect(needsInitialAnalysis({ ...saved, analysisStatus: 'RUNNING' }, '1.0.1')).toBe(true)
   })
 
-  it('ne relance ni un échec explicite ni une Session déjà analysée ou non finalisée', () => {
+  it('relance un échec d’un ancien moteur, mais pas celui de la version courante', () => {
     const saved = { ...session('session', 'damien'), rawDataReferences: [raw] }
-    expect(needsInitialAnalysis({ ...saved, analysisStatus: 'FAILED' })).toBe(false)
-    expect(needsInitialAnalysis({ ...saved, latestAnalysisRunId: 'run' })).toBe(false)
-    expect(needsInitialAnalysis({ ...saved, status: 'INTERRUPTED' })).toBe(false)
+    expect(needsInitialAnalysis({ ...saved, analysisStatus: 'FAILED' }, '1.0.1')).toBe(true)
+    expect(needsInitialAnalysis({ ...saved, analysisStatus: 'FAILED', analysisAttemptVersion: '1.0.0' }, '1.0.1')).toBe(true)
+    expect(needsInitialAnalysis({ ...saved, analysisStatus: 'FAILED', analysisAttemptVersion: '1.0.1' }, '1.0.1')).toBe(false)
+    expect(needsInitialAnalysis({ ...saved, latestAnalysisRunId: 'run' }, '1.0.1')).toBe(false)
+    expect(needsInitialAnalysis({ ...saved, status: 'INTERRUPTED' }, '1.0.1')).toBe(false)
   })
 })

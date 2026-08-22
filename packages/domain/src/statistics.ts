@@ -4,6 +4,17 @@ function sortedFinite(values: readonly number[]): number[] {
   return values.filter(Number.isFinite).toSorted((left, right) => left - right)
 }
 
+export function finiteExtent(values: Iterable<number>): [number, number] | undefined {
+  let minimum = Number.POSITIVE_INFINITY
+  let maximum = Number.NEGATIVE_INFINITY
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue
+    if (value < minimum) minimum = value
+    if (value > maximum) maximum = value
+  }
+  return minimum === Number.POSITIVE_INFINITY ? undefined : [minimum, maximum]
+}
+
 export function percentile(values: readonly number[], probability: number): number {
   const sorted = sortedFinite(values)
   if (sorted.length === 0) return Number.NaN
@@ -68,6 +79,19 @@ export function deterministicHash(value: unknown): string {
   for (let index = 0; index < text.length; index += 1) {
     hash ^= text.charCodeAt(index)
     hash = Math.imul(hash, 16_777_619)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+export function deterministicHashSequence(values: Iterable<unknown>): string {
+  let hash = 2_166_136_261
+  for (const value of values) {
+    const text = stableStringify(value)
+    const framed = `${text.length}:${text};`
+    for (let index = 0; index < framed.length; index += 1) {
+      hash ^= framed.charCodeAt(index)
+      hash = Math.imul(hash, 16_777_619)
+    }
   }
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
