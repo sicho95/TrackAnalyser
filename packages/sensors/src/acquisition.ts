@@ -3,18 +3,37 @@ import { ProgressiveRawStore, SessionCheckpointService } from '@track-analyser/s
 
 class AsyncChunkQueue implements AsyncIterable<Uint8Array> {
   private readonly chunks: Uint8Array[] = []
+  private readonly pendingChunks: Uint8Array[] = []
   private readonly waiters: Array<() => void> = []
+  private pendingByteLength = 0
   private closed = false
+  private static readonly TARGET_CHUNK_SIZE = 256 * 1024
 
   push(chunk: Uint8Array): void {
     if (this.closed) throw new Error('Le flux RAW est déjà fermé.')
-    this.chunks.push(chunk)
-    this.waiters.shift()?.()
+    this.pendingChunks.push(chunk)
+    this.pendingByteLength += chunk.byteLength
+    if (this.pendingByteLength >= AsyncChunkQueue.TARGET_CHUNK_SIZE) this.flushPending()
   }
 
   close(): void {
+    this.flushPending()
     this.closed = true
     this.waiters.splice(0).forEach((resolve) => resolve())
+  }
+
+  private flushPending(): void {
+    if (this.pendingByteLength === 0) return
+    const combined = new Uint8Array(this.pendingByteLength)
+    let offset = 0
+    this.pendingChunks.forEach((chunk) => {
+      combined.set(chunk, offset)
+      offset += chunk.byteLength
+    })
+    this.pendingChunks.length = 0
+    this.pendingByteLength = 0
+    this.chunks.push(combined)
+    this.waiters.shift()?.()
   }
 
   async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {

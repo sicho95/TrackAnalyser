@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 const buildId = process.env.BUILD_ID ?? new Date().toISOString().replaceAll(/\D/g, '').slice(0, 14)
 const appVersion = process.env.APP_VERSION ?? '1.0.0'
 const gitCommit = process.env.GITHUB_SHA ?? 'local'
+const analysisVersion = '1.0.1'
 
 export default defineConfig({
   base: '/TrackAnalyser/',
@@ -13,7 +14,7 @@ export default defineConfig({
     __BUILD_ID__: JSON.stringify(buildId),
     __GIT_COMMIT__: JSON.stringify(gitCommit),
     __SCHEMA_VERSION__: '4',
-    __ANALYSIS_VERSION__: JSON.stringify('1.0.0'),
+    __ANALYSIS_VERSION__: JSON.stringify(analysisVersion),
   },
   plugins: [
     react(),
@@ -50,7 +51,7 @@ export default defineConfig({
         this.emitFile({
           type: 'asset',
           fileName: 'version.json',
-          source: JSON.stringify({ appVersion, buildId, gitCommit, schemaVersion: 4, analysisVersion: '1.0.0' }),
+          source: JSON.stringify({ appVersion, buildId, gitCommit, schemaVersion: 4, analysisVersion }),
         })
       },
     },

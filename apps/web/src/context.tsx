@@ -130,7 +130,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
       for (const profile of Object.values(DEFAULT_ANALYSIS_PROFILES)) await opened.analysisProfiles.put(profile)
       await new SessionCheckpointService(opened).recoverInterrupted()
       await refresh()
-      const pendingSessions = (await opened.sessions.list()).filter(needsInitialAnalysis)
+      const pendingSessions = (await opened.sessions.list()).filter((session) => needsInitialAnalysis(session, __ANALYSIS_VERSION__))
       pendingSessions.forEach((session) => void scheduleSessionAnalysis(opened, session.id).catch(() => undefined).finally(refresh))
     })
   }, [refresh])
@@ -334,7 +334,8 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     const previousRuns = analysisRuns.filter((run) => run.sessionId === sessionWithRaw.id)
     const run = analyzeSession(sessionWithRaw, combinedSamples, previousRuns, DEFAULT_ANALYSIS_PROFILES[sessionWithRaw.activityType])
     await repositories.analysisRuns.put(run)
-    const finalSession = { ...attachAnalysisRun(sessionWithRaw, run), analysisStatus: 'COMPLETED' as const }
+    const finalSession = { ...attachAnalysisRun(sessionWithRaw, run), analysisStatus: 'COMPLETED' as const, analysisAttemptVersion: __ANALYSIS_VERSION__ }
+    delete finalSession.analysisError
     await repositories.sessions.put(finalSession)
     if (reference.storage === 'OPFS') void rawStore.discardIndexedDbMirror(reference.id)
     await Promise.all(importedSegments(result.metadata, finalSession.id).map((segment) => repositories.segments.put(segment)))
@@ -370,16 +371,32 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     if (profile?.activityType !== session.activityType) throw new Error('Le profil ne correspond pas à cette activité.')
     if (session.rawDataReferences.length === 0) throw new Error('Aucun RAW immutable n’est disponible pour cette session.')
     const previousRuns = analysisRuns.filter((run) => run.sessionId === session.id)
-    const { replayRawSamples } = await import('./reanalysis')
-    const samples = await replayRawSamples(session.rawDataReferences, new ProgressiveRawStore())
-    if (samples.length === 0) throw new Error('Les RAW ne contiennent aucune mesure rejouable.')
-    const candidate = analyzeSession(session, samples, previousRuns, profile)
-    const run = previousRuns.find((existing) => existing.id === candidate.id) ?? candidate
-    if (!previousRuns.some((existing) => existing.id === run.id)) await repositories.analysisRuns.put(run)
-    await repositories.sessions.put({ ...attachAnalysisRun(session, run), analysisStatus: 'COMPLETED' })
-    await refreshAutomaticSegments(repositories)
-    await refresh()
-    return run
+    const running = { ...session, analysisStatus: 'RUNNING' as const, analysisAttemptVersion: __ANALYSIS_VERSION__ }
+    delete running.analysisError
+    await repositories.sessions.put(running)
+    try {
+      const { replayRawSamples } = await import('./reanalysis')
+      const samples = await replayRawSamples(running.rawDataReferences, new ProgressiveRawStore())
+      if (samples.length === 0) throw new Error('Les RAW ne contiennent aucune mesure rejouable.')
+      const candidate = analyzeSession(running, samples, previousRuns, profile)
+      const run = previousRuns.find((existing) => existing.id === candidate.id) ?? candidate
+      if (!previousRuns.some((existing) => existing.id === run.id)) await repositories.analysisRuns.put(run)
+      const completed = { ...attachAnalysisRun(running, run), analysisStatus: 'COMPLETED' as const }
+      delete completed.analysisError
+      await repositories.sessions.put(completed)
+      await refreshAutomaticSegments(repositories)
+      await refresh()
+      return run
+    } catch (error) {
+      await repositories.sessions.put({
+        ...running,
+        analysisStatus: 'FAILED',
+        analysisAttemptVersion: __ANALYSIS_VERSION__,
+        analysisError: error instanceof Error ? error.message : String(error),
+      })
+      await refresh()
+      throw error
+    }
   }, [activeSession, analysisProfiles, analysisRuns, refresh, repositories, sessions])
 
   const updateSettings = useCallback(async (next: AppSettings): Promise<void> => {
@@ -452,7 +469,7 @@ function scheduleSessionAnalysis(repositories: LocalRepositories, sessionId: str
 async function analyzeStoredSession(repositories: LocalRepositories, sessionId: string): Promise<void> {
   const session = await repositories.sessions.get(sessionId)
   if (session === undefined || session.rawDataReferences.length === 0) return
-  const running = { ...session, analysisStatus: 'RUNNING' as const }
+  const running = { ...session, analysisStatus: 'RUNNING' as const, analysisAttemptVersion: __ANALYSIS_VERSION__ }
   delete running.analysisError
   await repositories.sessions.put(running)
   try {
@@ -523,12 +540,12 @@ function analyzeSession(
   previousRuns: readonly AnalysisRun[],
   profile: (typeof DEFAULT_ANALYSIS_PROFILES)[ActivityType],
 ): AnalysisRun {
-  const raw = createPipelineDataset(session.id, session.participantId, samples, 'RAW')
-  const normalized = transitionDataset(raw, 'NORMALIZED')
-  const synchronized = synchronizeByUtc(normalized)
-  const fused = new DataFusionEngine(__ANALYSIS_VERSION__).fuse(synchronized, []).dataset
-  const derived = deriveDataset(fused)
-  return executeAnalysis(session, derived, profile, previousRuns, {
+  let dataset = createPipelineDataset(session.id, session.participantId, samples, 'RAW')
+  dataset = transitionDataset(dataset, 'NORMALIZED')
+  dataset = synchronizeByUtc(dataset)
+  dataset = new DataFusionEngine(__ANALYSIS_VERSION__).fuse(dataset, []).dataset
+  dataset = deriveDataset(dataset)
+  return executeAnalysis(session, dataset, profile, previousRuns, {
     analysisVersion: __ANALYSIS_VERSION__,
     engineBuildId: __BUILD_ID__,
     gitCommit: __GIT_COMMIT__,

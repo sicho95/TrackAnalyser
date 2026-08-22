@@ -1,4 +1,4 @@
-import type { ComparisonResult, ScalePolicy } from '@track-analyser/domain'
+import { finiteExtent, type ComparisonResult, type ScalePolicy } from '@track-analyser/domain'
 import type { ReactNode } from 'react'
 import { visualizationFr } from './i18n'
 
@@ -17,8 +17,9 @@ function finite(values: readonly number[]): number[] {
 
 function extent(values: readonly number[], policy?: ScalePolicy): [number, number] {
   const valid = finite(values)
-  const rawMinimum = policy?.minimum ?? Math.min(...valid, 0)
-  const rawMaximum = policy?.maximum ?? Math.max(...valid, 1)
+  const [observedMinimum, observedMaximum] = finiteExtent(valid) ?? [0, 1]
+  const rawMinimum = policy?.minimum ?? Math.min(observedMinimum, 0)
+  const rawMaximum = policy?.maximum ?? Math.max(observedMaximum, 1)
   if (policy?.symmetricAroundZero === true) {
     const bound = Math.max(Math.abs(rawMinimum), Math.abs(rawMaximum), 1e-9)
     return [-bound, bound]

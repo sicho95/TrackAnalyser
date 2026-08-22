@@ -145,7 +145,7 @@ export class ProgressiveRawStore {
   async discardIndexedDbMirror(streamId: string): Promise<void> {
     const database = await openTrackAnalyserDatabase()
     const keys = await database.getAllKeysFromIndex('rawChunks', 'streamId', streamId)
-    await Promise.allSettled(keys.map((key) => database.delete('rawChunks', key)))
+    await deleteChunkKeys(database, keys)
   }
 
   async delete(reference: RawDataReference): Promise<void> {
@@ -161,7 +161,14 @@ export class ProgressiveRawStore {
     }
     const database = await openTrackAnalyserDatabase()
     const keys = await database.getAllKeysFromIndex('rawChunks', 'streamId', reference.id)
-    await Promise.all(keys.map((key) => database.delete('rawChunks', key)))
+    await deleteChunkKeys(database, keys)
+  }
+}
+
+async function deleteChunkKeys(database: Awaited<ReturnType<typeof openTrackAnalyserDatabase>>, keys: readonly string[]): Promise<void> {
+  const batchSize = 500
+  for (let start = 0; start < keys.length; start += batchSize) {
+    await Promise.all(keys.slice(start, start + batchSize).map((key) => database.delete('rawChunks', key)))
   }
 }
 

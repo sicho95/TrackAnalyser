@@ -77,17 +77,18 @@ export function createPipelineDataset(
     channels.set(channel, {
       channel,
       unit: ordered[0]?.unit ?? '',
-      samples: ordered.map((sample) => ({ ...sample, stage })),
+      samples: ordered.map((sample) => sample.stage === stage ? sample : { ...sample, stage }),
       provenance: ordered.map((sample) => sample.provenance),
     })
   })
+  const latestTimestamp = samples.reduce((latest, sample) => Number.isFinite(sample.timestamp) ? Math.max(latest, sample.timestamp) : latest, 0)
   return {
     sessionId,
     participantId,
     stage,
     channels,
     sourceIds: [...new Set(samples.map((sample) => sample.sourceId))],
-    createdAt: new Date(Math.max(0, ...samples.map((sample) => sample.timestamp))).toISOString(),
+    createdAt: new Date(latestTimestamp).toISOString(),
   }
 }
 

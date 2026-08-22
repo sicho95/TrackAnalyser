@@ -1,4 +1,5 @@
 import { contextsAreComparable } from './segments'
+import { finiteExtent } from './statistics'
 import type { AnalysisMetric, ComparableContext, ComparisonResult, ComparisonSeries } from './types'
 
 export function compareMetricSeries(metricId: string, series: readonly ComparisonSeries[], includeZero: boolean): ComparisonResult {
@@ -7,8 +8,7 @@ export function compareMetricSeries(metricId: string, series: readonly Compariso
   if (series.some((item) => item.unit !== unit)) throw new Error('Les séries comparées doivent utiliser la même unité.')
   const values = series.flatMap((item) => item.values).filter(Number.isFinite)
   if (values.length === 0) throw new Error('Aucune valeur comparable disponible.')
-  const minimum = Math.min(...values)
-  const maximum = Math.max(...values)
+  const [minimum, maximum] = finiteExtent(values) ?? [0, 0]
   const margin = Math.max((maximum - minimum) * 0.05, Math.abs(maximum) * 0.01, 1e-9)
   const firstMean = mean(series[0]?.values ?? [])
   const secondMean = mean(series[1]?.values ?? [])

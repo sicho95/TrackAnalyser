@@ -1,4 +1,4 @@
-import { deterministicHash, haversineDistanceMeters, statistics } from './statistics'
+import { deterministicHash, deterministicHashSequence, finiteExtent, haversineDistanceMeters, statistics } from './statistics'
 import type {
   ActivityType,
   AnalysisEvent,
@@ -150,19 +150,25 @@ function numericValues(series: ChannelSeries | undefined): number[] {
   return series?.samples.flatMap((sample) => (typeof sample.value === 'number' && Number.isFinite(sample.value) ? [sample.value] : [])) ?? []
 }
 
-function allTimestamps(context: AnalyzerContext): number[] {
-  return [...context.dataset.channels.values()].flatMap((series) => series.samples.map((sample) => sample.timestamp))
-}
-
 function durationSeconds(context: AnalyzerContext): number | undefined {
-  const timestamps = allTimestamps(context)
-  if (timestamps.length < 2) return undefined
-  return (Math.max(...timestamps) - Math.min(...timestamps)) / 1000
+  let minimum = Number.POSITIVE_INFINITY
+  let maximum = Number.NEGATIVE_INFINITY
+  let count = 0
+  context.dataset.channels.forEach((series) => {
+    series.samples.forEach((sample) => {
+      if (!Number.isFinite(sample.timestamp)) return
+      minimum = Math.min(minimum, sample.timestamp)
+      maximum = Math.max(maximum, sample.timestamp)
+      count += 1
+    })
+  })
+  return count < 2 ? undefined : (maximum - minimum) / 1000
 }
 
 function totalDistanceMeters(context: AnalyzerContext): number | undefined {
   const distanceValues = context.numeric('distance')
-  if (distanceValues.length > 0) return Math.max(...distanceValues) - Math.min(...distanceValues)
+  const distanceExtent = finiteExtent(distanceValues)
+  if (distanceExtent !== undefined) return distanceExtent[1] - distanceExtent[0]
   const positions = context.series('position')?.samples.flatMap((sample) =>
     typeof sample.value === 'object' && !Array.isArray(sample.value) && 'latitude' in sample.value ? [sample.value as GeoPoint] : [],
   )
@@ -418,7 +424,7 @@ function eventsFor(context: AnalyzerContext): AnalysisEvent[] {
       }
     })
   }
-  if (context.profile.activityType === 'AIRCRAFT') events.push(...aircraftPhases(context))
+  if (context.profile.activityType === 'AIRCRAFT') aircraftPhases(context).forEach((event) => events.push(event))
   return events
 }
 
@@ -565,10 +571,18 @@ export function executeAnalysis(
   if (session.participantId !== dataset.participantId) throw new Error('Le jeu de données appartient à un autre participant.')
   if (dataset.stage !== 'DERIVED') throw new Error('L’analyse exige un jeu de données DERIVED.')
   const result = ACTIVITY_ANALYZERS[session.activityType].analyze(dataset, profile)
+  const rawInputs = session.rawDataReferences
+    .map((reference) => ({ sha256: reference.sha256, byteLength: reference.byteLength, mediaType: reference.mediaType, sourceId: reference.sourceId }))
+    .toSorted((left, right) => left.sha256.localeCompare(right.sha256) || left.sourceId.localeCompare(right.sourceId))
+  const channelInputs = rawInputs.length > 0 ? undefined : [...dataset.channels.entries()].map(([channel, series]) => ({
+    channel,
+    fingerprint: deterministicHashSequence(series.samples),
+  }))
   const inputFingerprint = deterministicHash({
     participantId: dataset.participantId,
     sessionId: dataset.sessionId,
-    channels: [...dataset.channels.entries()].map(([channel, series]) => [channel, series.samples]),
+    rawInputs,
+    ...(channelInputs === undefined ? {} : { channelInputs }),
     analysisVersion: options.analysisVersion,
     profile,
   })

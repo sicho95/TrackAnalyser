@@ -1,4 +1,4 @@
-import type { ActivityType, ImportResult, MetricChannel, SensorSample } from '@track-analyser/domain'
+import { finiteExtent, type ActivityType, type ImportResult, type MetricChannel, type SensorSample } from '@track-analyser/domain'
 import { createImportedSample, sha256Hex } from './shared'
 
 interface XmlPoint {
@@ -134,12 +134,13 @@ export function parseAppleHealthXml(bytes: Uint8Array, fileName: string): Import
     return [createImportedSample(timestamp, definition[0], value * definition[2], definition[1], sourceId, fileName, 0.85)]
   })
   const timestamps = samples.map((sample) => sample.timestamp)
+  const timestampExtent = finiteExtent(timestamps)
   return {
     identity: {
       format: 'APPLE_XML',
       fileName,
       sha256,
-      ...(timestamps.length === 0 ? {} : { startTime: new Date(Math.min(...timestamps)).toISOString(), endTime: new Date(Math.max(...timestamps)).toISOString() }),
+      ...(timestampExtent === undefined ? {} : { startTime: new Date(timestampExtent[0]).toISOString(), endTime: new Date(timestampExtent[1]).toISOString() }),
       activityType: 'GENERIC',
       channels: [...new Set(samples.map((sample) => sample.channel))],
     },
