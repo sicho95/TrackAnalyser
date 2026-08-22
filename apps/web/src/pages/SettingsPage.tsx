@@ -2,7 +2,7 @@ import { createBackupArchive, restoreBackupArchive } from '@track-analyser/expor
 import { DEFAULT_SEGMENT_DETECTION_SETTINGS, SEGMENT_LENGTH_LIMITS_METERS, SEGMENT_SIMILARITY_LIMITS, normalizeSegmentDetectionSettings } from '@track-analyser/domain'
 import { chunkBytes, ProgressiveRawStore } from '@track-analyser/storage'
 import { ScreenHeader } from '@track-analyser/ui'
-import { DatabaseBackup, FileInput, FileOutput, Moon, RotateCcw, SlidersHorizontal, Sun } from 'lucide-react'
+import { DatabaseBackup, Download, Moon, RotateCcw, SlidersHorizontal, Sun, Upload } from 'lucide-react'
 import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useAppData } from '../context'
 import { messages } from '../i18n'
@@ -88,7 +88,7 @@ export function SettingsPage(): ReactNode {
       <div className="number-setting"><label htmlFor="segment-minimum-length">{messages.settings.minimumLength}</label><span><input id="segment-minimum-length" type="number" inputMode="numeric" min={SEGMENT_LENGTH_LIMITS_METERS.minimum} max={SEGMENT_LENGTH_LIMITS_METERS.maximum} step="50" value={minimumLengthMeters} aria-describedby="segment-minimum-length-help" onChange={(event) => setMinimumLengthMeters(Number(event.target.value))} /> m</span><small id="segment-minimum-length-help">{messages.settings.minimumLengthHelp}</small></div>
       <button className="primary-button" type="button" onClick={() => void saveSegmentSettings()}>{messages.settings.applySegments}</button>
     </section>
-    <section className="settings-section"><h2>{messages.settings.data}</h2><button className="settings-action" type="button" onClick={() => void backup()}><DatabaseBackup size={20} /><span><strong>{messages.settings.backup}</strong><small>{messages.settings.backupBody}</small></span><FileOutput size={18} /></button><label className="settings-action"><FileInput size={20} /><span><strong>{messages.settings.restore}</strong><small>{messages.settings.restoreBody}</small></span><input type="file" accept=".tabackup" onChange={(event) => void restore(event)} hidden /></label></section>
+    <section className="settings-section"><h2>{messages.settings.data}</h2><button className="settings-action" type="button" onClick={() => void backup()}><DatabaseBackup size={20} /><span><strong>{messages.settings.backup}</strong><small>{messages.settings.backupBody}</small></span><Upload size={18} /></button><label className="settings-action"><Download size={20} /><span><strong>{messages.settings.restore}</strong><small>{messages.settings.restoreBody}</small></span><input type="file" accept=".tabackup" onChange={(event) => void restore(event)} hidden /></label></section>
     <section className="privacy-panel"><h2>{messages.settings.privacy}</h2><p>{messages.settings.privacyBody}</p></section>
     {message.length === 0 ? null : <p className="inline-message">{message}</p>}
   </div>
