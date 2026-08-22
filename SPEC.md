@@ -1,8 +1,8 @@
 # TrackAnalyser — Spécification maître unifiée
 
 **Statut :** spécification fonctionnelle, technique, matérielle et produit autoritaire  
-**Version du document :** 1.5
-**Date :** 21 août 2026  
+**Version du document :** 1.6
+**Date :** 22 août 2026
 **Dépôt applicatif :** `sicho95/TrackAnalyser`  
 **Mémoire SichoBrain :** `200_PROJECTS/TrackAnalyzer/SPEC.md`
 
@@ -422,6 +422,10 @@ Après l’action « Démarrer » :
 7. à l’issue du compte à rebours, conserver un `CalibrationSnapshot`, créer réellement la Session puis démarrer l’écriture progressive ;
 8. si `DeviceMotion` reste indisponible, démarrer avec GNSS et les autres sources disponibles sans inventer les canaux IMU.
 
+Pendant toute Session active, demander un `screen` Wake Lock lorsque l’API navigateur est disponible. Afficher son état dans le diagnostic, le réacquérir lorsque la page redevient visible et le libérer uniquement après l’arrêt ou l’abandon. Cette demande reste consultative : Safari ou iOS peuvent la refuser ou la lever en économie d’énergie, batterie faible, changement d’application ou verrouillage manuel. Une levée du Wake Lock ne doit donc jamais constituer l’unique protection des données.
+
+L’écran temps réel doit occuper exactement la hauteur dynamique visible du navigateur, y compris dans Safari avec ses barres variables. Son en-tête, ses cartes, les diagnostics et l’action d’arrêt conservent des emplacements stables. Une mise à jour de valeur, l’apparition d’une courbe ou le passage de « en attente » à une mesure ne doit ni modifier la hauteur de page ni provoquer de défilement vertical. La navigation générale est masquée pendant l’acquisition afin d’éviter une sortie accidentelle et de réserver la hauteur aux mesures et à l’arrêt.
+
 Le zéro immobile corrige le biais de fixation observable. L’identification complète du repère de l’activité peut continuer pendant le déplacement à partir de la gravité, du GNSS et des phases dynamiques. La qualité doit refléter cette différence et ne pas présenter une projection écran comme une calibration véhicule parfaite.
 
 Pour les vibrations fines, signaler qu’une fixation plus rigide et reproductible est nécessaire.
@@ -624,6 +628,8 @@ Mémoire vive : buffers courts nécessaires à l’acquisition, aux calculs temp
 - OPFS pour les gros flux RAW/chunks lorsque disponible ;
 - IndexedDB pour métadonnées, index, participants, équipements, appareils, sessions, événements, analyses et références de chunks ;
 - fallback IndexedDB si OPFS indisponible.
+
+L’identité du flux RAW actif doit être persistée dans la Session avant la première mesure. Conserver un miroir de chunks IndexedDB même lorsqu’OPFS est disponible jusqu’au rattachement de la référence finale et à une première relecture réussie. Après interruption, reconstruire et vérifier la référence RAW depuis ces chunks, la rattacher à la même Session et rendre l’analyse reprenable. Ne jamais laisser une Session avec des chunks locaux orphelins uniquement parce que Safari a suspendu la page avant la fermeture du flux.
 
 Ne pas stocker des heures d’IMU haute fréquence dans un gigantesque objet JSON.
 
@@ -1265,6 +1271,17 @@ Utiliser chunks et checkpoints.
 
 Une panne UI ne doit pas détruire une session complète.
 
+L’arrêt suit obligatoirement cet ordre transactionnel :
+
+1. arrêter les sources ;
+2. fermer le flux et calculer son empreinte ;
+3. rattacher la référence RAW à la Session ;
+4. marquer la Session `COMPLETED` et retirer l’identifiant de Session active ;
+5. rendre immédiatement la Session consultable ;
+6. lancer ensuite seulement l’analyse depuis le RAW durable.
+
+L’analyse ne fait pas partie de la transaction d’arrêt. Son état `PENDING`, `RUNNING`, `COMPLETED` ou `FAILED` est conservé séparément. Si Safari, le verrouillage ou l’arrêt du téléphone interrompt une analyse `PENDING` ou `RUNNING`, le lancement suivant doit la reprendre depuis le RAW sans réenregistrer ni perdre la Session. Un échec d’analyse ne doit jamais remettre en cause la sauvegarde du RAW.
+
 Prévoir récupération de session interrompue et reprise de synchronisation.
 
 ---
@@ -1553,6 +1570,10 @@ La V1 est acceptable si notamment :
 35. une même trace parcourue en sens inverse n’est pas déclarée comparable ;
 36. les exports et la suppression sont accessibles par glissement, et la suppression exige deux confirmations.
 37. un segment peut se prolonger sans longueur maximale tant que la similarité glissante reste suffisante et s’arrête lorsque cette similarité passe sous le seuil.
+38. l’écran d’enregistrement reste contenu dans la hauteur visible Safari sans saut de page lors des rafraîchissements ;
+39. un Wake Lock écran est demandé, diagnostiqué et réacquis pendant la Session lorsque le navigateur le permet ;
+40. l’arrêt sauvegarde et rattache le RAW avant de lancer une analyse différée ;
+41. une interruption avant finalisation récupère les chunks grâce au `activeRawStreamId`, et une analyse interrompue reprend au lancement suivant.
 
 ---
 

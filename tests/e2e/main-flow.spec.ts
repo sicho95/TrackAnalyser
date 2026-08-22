@@ -24,6 +24,18 @@ test.beforeEach(async ({ page }) => {
         clearWatch: () => undefined,
       },
     })
+    Object.defineProperty(navigator, 'wakeLock', {
+      configurable: true,
+      value: {
+        async request() {
+          const sentinel = new EventTarget() as EventTarget & { released: boolean; release(): Promise<void> }
+          sentinel.released = false
+          sentinel.release = async () => { sentinel.released = true; sentinel.dispatchEvent(new Event('release')) }
+          ;(window as unknown as { wakeLockRequested?: boolean }).wakeLockRequested = true
+          return sentinel
+        },
+      },
+    })
   })
   await page.goto('./')
 })
@@ -53,11 +65,17 @@ test('crée un participant puis enregistre et analyse hors cloud', async ({ page
   await page.getByRole('button', { name: 'Démarrer la session' }).click()
   await page.evaluate(() => { for (let index = 0; index < 60; index += 1) window.dispatchEvent(new DeviceMotionEvent('devicemotion')) })
   await expect(page.getByText('RECORDING')).toBeVisible({ timeout: 8_000 })
+  await expect.poll(() => page.evaluate(() => (window as unknown as { wakeLockRequested?: boolean }).wakeLockRequested)).toBe(true)
+  await expect(page.getByText('Écran maintenu actif')).toBeAttached()
   await page.evaluate(() => window.dispatchEvent(new DeviceMotionEvent('devicemotion')))
   await expect(page.getByText('Mouvement · mesures reçues')).toBeVisible()
   await expect(page.getByText('km/h')).toBeVisible()
+  const initialRecordingHeight = await page.evaluate(() => document.documentElement.scrollHeight)
+  expect(initialRecordingHeight).toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight + 1))
+  await expect(page.getByRole('button', { name: 'Arrêter et sauvegarder' })).toBeInViewport()
   await page.waitForTimeout(500)
-  await page.getByRole('button', { name: 'Arrêter et analyser' }).click()
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(initialRecordingHeight)
+  await page.getByRole('button', { name: 'Arrêter et sauvegarder' }).click()
   await expect(page.getByText('Données techniques et provenance')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText('Indisponible')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Afficher la carte en plein écran' })).toBeVisible()

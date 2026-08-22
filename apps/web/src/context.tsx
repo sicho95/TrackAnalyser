@@ -27,6 +27,7 @@ import { DataFusionEngine, synchronizeByUtc } from '@track-analyser/fusion'
 import { chunkBytes, LocalRepositories, ProgressiveRawStore, SessionCheckpointService } from '@track-analyser/storage'
 import { AcquisitionCoordinator, PhoneLocationSensorSource, PhoneMotionSensorSource, createObservedPhoneProfile } from '@track-analyser/sensors'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { needsInitialAnalysis } from './session-analysis'
 
 interface AppData {
   ready: boolean
@@ -69,9 +70,11 @@ const DEFAULT_SETTINGS: AppSettings = {
 }
 
 const AppDataContext = createContext<AppData | undefined>(undefined)
+const scheduledAnalyses = new Map<string, Promise<void>>()
 
 export function AppDataProvider({ children }: { children: ReactNode }): ReactNode {
   const [repositories, setRepositories] = useState<LocalRepositories>()
+  const repositoriesRef = useRef<LocalRepositories | undefined>(undefined)
   const [participants, setParticipants] = useState<Participant[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [equipment, setEquipment] = useState<Equipment[]>([])
@@ -98,16 +101,17 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
   const polling = useRef<number | undefined>(undefined)
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (repositories === undefined) return
+    const currentRepositories = repositoriesRef.current
+    if (currentRepositories === undefined) return
     const [nextParticipants, nextSessions, nextEquipment, nextGroups, nextRuns, nextProfiles, nextSegments, nextSettings] = await Promise.all([
-      repositories.participants.list(),
-      repositories.sessions.list(),
-      repositories.equipment.list(),
-      repositories.activityGroups.list(),
-      repositories.analysisRuns.list(),
-      repositories.analysisProfiles.list(),
-      repositories.segments.list(),
-      repositories.getSettings(),
+      currentRepositories.participants.list(),
+      currentRepositories.sessions.list(),
+      currentRepositories.equipment.list(),
+      currentRepositories.activityGroups.list(),
+      currentRepositories.analysisRuns.list(),
+      currentRepositories.analysisProfiles.list(),
+      currentRepositories.segments.list(),
+      currentRepositories.getSettings(),
     ])
     setParticipants(nextParticipants.toSorted((left, right) => left.name.localeCompare(right.name)))
     setSessions(nextSessions.toSorted((left, right) => right.startTime.localeCompare(left.startTime)))
@@ -117,18 +121,18 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     setAnalysisProfiles(nextProfiles.toSorted((left, right) => left.activityType.localeCompare(right.activityType) || left.version.localeCompare(right.version)))
     setSegments(nextSegments.toSorted((left, right) => left.startTime - right.startTime))
     setSettings(nextSettings)
-  }, [repositories])
-
-  useEffect(() => {
-    void LocalRepositories.open().then(async (opened) => {
-      setRepositories(opened)
-      for (const profile of Object.values(DEFAULT_ANALYSIS_PROFILES)) await opened.analysisProfiles.put(profile)
-      await new SessionCheckpointService(opened).recoverInterrupted()
-    })
   }, [])
 
   useEffect(() => {
-    void refresh()
+    void LocalRepositories.open().then(async (opened) => {
+      repositoriesRef.current = opened
+      setRepositories(opened)
+      for (const profile of Object.values(DEFAULT_ANALYSIS_PROFILES)) await opened.analysisProfiles.put(profile)
+      await new SessionCheckpointService(opened).recoverInterrupted()
+      await refresh()
+      const pendingSessions = (await opened.sessions.list()).filter(needsInitialAnalysis)
+      pendingSessions.forEach((session) => void scheduleSessionAnalysis(opened, session.id).catch(() => undefined).finally(refresh))
+    })
   }, [refresh])
 
   useEffect(() => {
@@ -279,21 +283,16 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     if (repositories === undefined || activeSession === undefined || coordinator.current === undefined) throw new Error('Aucune session active.')
     if (polling.current !== undefined) window.clearInterval(polling.current)
     const reference = await coordinator.current.stop()
-    const completed = (await repositories.sessions.get(activeSession.id)) ?? { ...activeSession, rawDataReferences: [reference], status: 'COMPLETED' as const, endTime: new Date().toISOString() }
-    // Rejouer le RAW complet afin que la fenêtre courte de l'interface ne tronque jamais l'analyse finale.
-    const { replayRawSamples } = await import('./reanalysis')
-    const samples = await replayRawSamples([reference], new ProgressiveRawStore())
-    const run = analyzeSession(completed, samples, [], DEFAULT_ANALYSIS_PROFILES[completed.activityType])
-    await repositories.analysisRuns.put(run)
-    const withAnalysis = attachAnalysisRun(completed, run)
-    await repositories.sessions.put(withAnalysis)
-    await refreshAutomaticSegments(repositories)
+    const completed = (await repositories.sessions.get(activeSession.id)) ?? { ...activeSession, rawDataReferences: [reference], status: 'COMPLETED' as const, analysisStatus: 'PENDING' as const, endTime: new Date().toISOString() }
     coordinator.current = undefined
     setActiveSession(undefined)
     setAcquisitionStatus('IDLE')
     setAcquisitionErrors([])
+    setLiveSamples([])
     await refresh()
-    return withAnalysis
+    // Lancer seulement après avoir rendu la Session et sa référence RAW durables et consultables.
+    void scheduleSessionAnalysis(repositories, completed.id).catch(() => undefined).finally(refresh)
+    return completed
   }, [activeSession, refresh, repositories])
 
   const importData = useCallback(async (result: ImportResult, participantId: string, sessionId?: string): Promise<Session> => {
@@ -335,8 +334,9 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     const previousRuns = analysisRuns.filter((run) => run.sessionId === sessionWithRaw.id)
     const run = analyzeSession(sessionWithRaw, combinedSamples, previousRuns, DEFAULT_ANALYSIS_PROFILES[sessionWithRaw.activityType])
     await repositories.analysisRuns.put(run)
-    const finalSession = attachAnalysisRun(sessionWithRaw, run)
+    const finalSession = { ...attachAnalysisRun(sessionWithRaw, run), analysisStatus: 'COMPLETED' as const }
     await repositories.sessions.put(finalSession)
+    if (reference.storage === 'OPFS') void rawStore.discardIndexedDbMirror(reference.id)
     await Promise.all(importedSegments(result.metadata, finalSession.id).map((segment) => repositories.segments.put(segment)))
     await refreshAutomaticSegments(repositories)
     await refresh()
@@ -376,7 +376,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     const candidate = analyzeSession(session, samples, previousRuns, profile)
     const run = previousRuns.find((existing) => existing.id === candidate.id) ?? candidate
     if (!previousRuns.some((existing) => existing.id === run.id)) await repositories.analysisRuns.put(run)
-    await repositories.sessions.put(attachAnalysisRun(session, run))
+    await repositories.sessions.put({ ...attachAnalysisRun(session, run), analysisStatus: 'COMPLETED' })
     await refreshAutomaticSegments(repositories)
     await refresh()
     return run
@@ -439,6 +439,46 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
   }), [acquisitionErrors, acquisitionStatus, activeSession, activityGroups, addEquipment, addParticipant, analysisProfiles, analysisRuns, cancelPreparedSession, commitPreparedSession, createActivityGroup, createAnalysisProfile, deleteSession, equipment, importData, liveSamples, participants, prepareSessionStart, reanalyzeSession, repositories, refresh, segments, sessions, settings, stopSession, updateSettings])
 
   return <AppDataContext value={value}>{children}</AppDataContext>
+}
+
+function scheduleSessionAnalysis(repositories: LocalRepositories, sessionId: string): Promise<void> {
+  const existing = scheduledAnalyses.get(sessionId)
+  if (existing !== undefined) return existing
+  const task = analyzeStoredSession(repositories, sessionId).finally(() => scheduledAnalyses.delete(sessionId))
+  scheduledAnalyses.set(sessionId, task)
+  return task
+}
+
+async function analyzeStoredSession(repositories: LocalRepositories, sessionId: string): Promise<void> {
+  const session = await repositories.sessions.get(sessionId)
+  if (session === undefined || session.rawDataReferences.length === 0) return
+  const running = { ...session, analysisStatus: 'RUNNING' as const }
+  delete running.analysisError
+  await repositories.sessions.put(running)
+  try {
+    // Rejouer le RAW complet après sa sauvegarde afin que la fenêtre courte de l'interface ne tronque jamais l'analyse finale.
+    const { replayRawSamples } = await import('./reanalysis')
+    const rawStore = new ProgressiveRawStore()
+    const samples = await replayRawSamples(running.rawDataReferences, rawStore)
+    if (samples.length === 0) throw new Error('Le RAW sauvegardé ne contient aucune mesure rejouable.')
+    const previousRuns = (await repositories.analysisRuns.list()).filter((run) => run.sessionId === running.id)
+    const candidate = analyzeSession(running, samples, previousRuns, DEFAULT_ANALYSIS_PROFILES[running.activityType])
+    const run = previousRuns.find((existingRun) => existingRun.id === candidate.id) ?? candidate
+    if (!previousRuns.some((existingRun) => existingRun.id === run.id)) await repositories.analysisRuns.put(run)
+    const completed = { ...attachAnalysisRun(running, run), analysisStatus: 'COMPLETED' as const }
+    delete completed.analysisError
+    await repositories.sessions.put(completed)
+    running.rawDataReferences.filter((reference) => reference.storage === 'OPFS').forEach((reference) => void rawStore.discardIndexedDbMirror(reference.id))
+    await refreshAutomaticSegments(repositories)
+  } catch (error) {
+    const current = (await repositories.sessions.get(sessionId)) ?? running
+    await repositories.sessions.put({
+      ...current,
+      analysisStatus: 'FAILED',
+      analysisError: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
 }
 
 async function refreshAutomaticSegments(repositories: LocalRepositories): Promise<void> {
