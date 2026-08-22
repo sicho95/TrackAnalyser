@@ -22,6 +22,7 @@ Cette matrice complète `SPEC.md` sans le remplacer.
 | Hot refresh sûr | version distante, prompt, persistance `pendingUpdate`, blocage pendant session et test de politique |
 | Gestion des sessions | icônes selon le type, métriques disponibles uniquement, façade glissable lisible sans menu redondant, exports et suppression à double confirmation |
 | Arrêt résilient | identité du flux persistée avant mesure, RAW rattaché avant retour UI, analyse différée avec états durables, récupération des chunks et reprise au lancement |
+| Grosses sessions | replay itératif au-delà de 130 000 mesures sans expansion en arguments, chunks d’acquisition d’environ 256 Kio, nettoyage par lots, empreinte fondée sur les SHA-256 RAW, analyse moteur 1.0.1 et nouvelle tentative automatique après échec d’une ancienne version |
 
 ## Validations qui restent matérielles
 

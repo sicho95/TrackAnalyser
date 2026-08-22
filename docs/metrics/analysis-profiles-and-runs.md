@@ -4,7 +4,7 @@ Tous les seuils empiriques se trouvent dans un `AnalysisProfile` versionné par 
 
 `AnalysisRun` conserve version moteur, version profil, build, commit, date, références de sorties, fingerprint d’entrée et résultat complet. Le premier run reste `isOriginal`. La session garde séparément `originalAnalysisRunId` et `latestAnalysisRunId`.
 
-Le fingerprint déterministe inclut RAW normalisé, participant, session, profil et version moteur. Les tests garantissent :
+Le fingerprint déterministe inclut les SHA-256 des références RAW immuables, le participant, la session, le profil et la version moteur. Il n’exige donc pas de sérialiser en une chaîne géante toutes les mesures du pipeline. Les tests garantissent :
 
 ```text
 mêmes RAW + même profil + même analysisVersion = même résultat
@@ -13,6 +13,8 @@ mêmes RAW + même profil + même analysisVersion = même résultat
 Une évolution de score peut être expliquée par les méthodes des métriques et la différence entre le run original et le run courant. Les anciens résultats ne nécessitent pas de réexécuter un moteur retiré pour rester consultables.
 
 L’écran Profils dérive une nouvelle version sémantique sans modifier le profil source. Le détail d’une session relit ses références RAW pour une réanalyse : NDJSON smartphone en streaming, binaire importé avec son parseur d’origine, ou RAW embarqués dans un `.tatrip`. Si l’empreinte existe déjà, l’AnalysisRun existant est réutilisé au lieu d’être réécrit.
+
+La Session conserve aussi `analysisAttemptVersion`. Un échec explicite n’est pas relancé en boucle avec le même moteur. Lorsqu’une version plus récente est installée et qu’aucun `AnalysisRun` n’existe, la Session est automatiquement remise en analyse. Le moteur 1.0.1 remplace les expansions de grands tableaux en arguments de fonction par des parcours itératifs compatibles avec les gros RAW Safari.
 
 ## Calibration terrain
 

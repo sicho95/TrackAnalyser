@@ -1,8 +1,8 @@
 # TrackAnalyser — Spécification maître unifiée
 
 **Statut :** spécification fonctionnelle, technique, matérielle et produit autoritaire  
-**Version du document :** 1.8
-**Date :** 22 août 2026
+**Version du document :** 1.9
+**Date :** 23 août 2026
 **Dépôt applicatif :** `sicho95/TrackAnalyser`  
 **Mémoire SichoBrain :** `200_PROJECTS/TrackAnalyzer/SPEC.md`
 
@@ -553,6 +553,9 @@ interface Session {
   analysisRunIds: string[]
   originalAnalysisRunId?: string
   latestAnalysisRunId?: string
+  analysisStatus?: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  analysisAttemptVersion?: string
+  analysisError?: string
 }
 ```
 
@@ -591,6 +594,8 @@ Règles :
 - expliquer les changements de scores ou métriques entre versions ;
 - permettre, lorsque l’ancienne version du moteur reste disponible, de régénérer une analyse historique à partir du RAW ;
 - à défaut de conserver tous les anciens moteurs embarqués, conserver suffisamment de sorties et métadonnées pour restituer les résultats historiques sans ambiguïté.
+- mémoriser la version du moteur ayant tenté la dernière analyse, afin de ne pas répéter indéfiniment le même échec mais de relancer automatiquement les Sessions sans résultat lorsqu’un moteur plus récent est installé ;
+- calculer l’empreinte d’entrée depuis les SHA-256 des références RAW immuables, le participant, la Session, le profil et la version moteur, sans sérialiser en mémoire toutes les mesures dérivées.
 
 L’UI doit pouvoir afficher la version utilisée et signaler qu’une nouvelle analyse est disponible.
 
@@ -622,6 +627,10 @@ Chaque `AnalysisRun` conserve la version du profil utilisée afin de garantir la
 ## 18.1. Chaud
 
 Mémoire vive : buffers courts nécessaires à l’acquisition, aux calculs temps réel et à l’affichage.
+
+Les collections de mesures peuvent dépasser les limites d’arguments des moteurs JavaScript. Ne jamais appliquer `push(...mesures)`, `Math.min(...mesures)`, `Math.max(...mesures)` ou une construction équivalente à un flux de taille non bornée. Parcourir ou réduire les collections de façon itérative. Pendant une analyse, libérer les représentations intermédiaires du pipeline dès que l’étape suivante les remplace et ne pas construire une chaîne JSON géante pour l’empreinte de reproductibilité.
+
+Regrouper progressivement les lignes NDJSON d’acquisition en chunks d’environ 256 Kio avant écriture OPFS/IndexedDB. Ne pas créer un enregistrement IndexedDB par mesure IMU. Supprimer les miroirs volumineux par lots bornés après la première analyse réussie.
 
 ## 18.2. Tiède
 
@@ -1390,6 +1399,8 @@ mêmes RAW
 = mêmes résultats
 ```
 
+Ajouter une régression volumétrique au-delà de la limite d’arguments JavaScript et valider un replay complet d’au moins 130 000 mesures. Les sauvegardes terrain volumineuses peuvent servir à une validation locale sans être commitées.
+
 ## Simulation
 
 Accélération, freinage, virage, montée, descente, thermique, vibration, perte GNSS, décalage d’horloge.
@@ -1582,6 +1593,7 @@ La V1 est acceptable si notamment :
 40. l’arrêt sauvegarde et rattache le RAW avant de lancer une analyse différée ;
 41. une interruption avant finalisation récupère les chunks grâce au `activeRawStreamId`, et une analyse interrompue reprend au lancement suivant.
 42. les imports utilisent une flèche descendante entrant dans une boîte, les exports une flèche montante sortant de cette boîte, et une Session disposant de positions réelles peut être exportée en GPX 1.1.
+43. une Session de plusieurs centaines de milliers de mesures est rejouée et analysée sans débordement de pile ; un échec d’un ancien moteur est automatiquement retenté une seule fois par nouvelle `analysisVersion`.
 
 ---
 

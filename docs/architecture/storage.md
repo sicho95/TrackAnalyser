@@ -4,6 +4,8 @@
 
 L’acquisition ne garde qu’une fenêtre récente pour l’affichage et un tampon de checkpoint. Le flux complet est sérialisé progressivement en NDJSON ; plusieurs heures d’IMU ne forment pas un objet JSON unique.
 
+Le replay NDJSON accepte un filtre de canaux et ajoute les mesures de façon itérative. Le pipeline n’utilise jamais les formes `push(...tableau)` ou `Math.max(...tableau)` sur une collection non bornée : Safari limite le nombre d’arguments bien avant la taille possible d’une Session. L’empreinte d’analyse repose sur les SHA-256 RAW et les étapes intermédiaires sont remplacées successivement afin de réduire le pic mémoire. À l’écriture, les lignes sont regroupées dans des chunks cibles de 256 Kio au lieu de créer un chunk IndexedDB par mesure. Le miroir est supprimé par lots bornés après validation.
+
 ## Tiède
 
 `ProgressiveRawStore` écrit dans OPFS lorsque `navigator.storage.getDirectory` est disponible. Le fallback stocke des chunks IndexedDB indexés par `streamId`. Chaque référence contient la taille, le nombre de chunks et le SHA-256 du flux complet.
