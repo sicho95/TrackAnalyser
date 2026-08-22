@@ -1,7 +1,7 @@
 # TrackAnalyser — Spécification maître unifiée
 
 **Statut :** spécification fonctionnelle, technique, matérielle et produit autoritaire  
-**Version du document :** 1.7
+**Version du document :** 1.8
 **Date :** 22 août 2026
 **Dépôt applicatif :** `sicho95/TrackAnalyser`  
 **Mémoire SichoBrain :** `200_PROJECTS/TrackAnalyzer/SPEC.md`
@@ -1581,7 +1581,7 @@ La V1 est acceptable si notamment :
 39. un Wake Lock écran est demandé, diagnostiqué et réacquis pendant la Session lorsque le navigateur le permet ;
 40. l’arrêt sauvegarde et rattache le RAW avant de lancer une analyse différée ;
 41. une interruption avant finalisation récupère les chunks grâce au `activeRawStreamId`, et une analyse interrompue reprend au lancement suivant.
-42. les imports utilisent une icône de fichier entrant, les exports une icône de fichier sortant, et une Session disposant de positions réelles peut être exportée en GPX 1.1.
+42. les imports utilisent une flèche descendante entrant dans une boîte, les exports une flèche montante sortant de cette boîte, et une Session disposant de positions réelles peut être exportée en GPX 1.1.
 
 ---
 
