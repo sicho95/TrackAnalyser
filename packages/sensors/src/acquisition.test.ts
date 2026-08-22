@@ -34,7 +34,8 @@ describe('coordinateur d’acquisition résilient', () => {
     const current = { ...session('recorded', 'damien'), status: 'DRAFT' as const }
     delete current.endTime
     await repositories.sessions.put(current)
-    const coordinator = new AcquisitionCoordinator([new TestSource()], new ProgressiveRawStore(), new SessionCheckpointService(repositories))
+    const rawStore = new ProgressiveRawStore()
+    const coordinator = new AcquisitionCoordinator([new TestSource()], rawStore, new SessionCheckpointService(repositories))
 
     await coordinator.start(current)
     const recording = await repositories.sessions.get(current.id)
@@ -43,10 +44,14 @@ describe('coordinateur d’acquisition résilient', () => {
 
     const reference = await coordinator.stop()
     const completed = await repositories.sessions.get(current.id)
-    expect(reference.chunkCount).toBe(101)
+    expect(reference.chunkCount).toBe(1)
     expect(completed?.status).toBe('COMPLETED')
     expect(completed?.analysisStatus).toBe('PENDING')
     expect(completed?.activeRawStreamId).toBeUndefined()
     expect(completed?.rawDataReferences[0]?.id).toBe(reference.id)
+    const storedChunks: Uint8Array[] = []
+    for await (const chunk of rawStore.read(reference)) storedChunks.push(chunk)
+    expect(storedChunks).toHaveLength(1)
+    expect(new TextDecoder().decode(storedChunks[0]).trim().split('\n')).toHaveLength(101)
   })
 })
