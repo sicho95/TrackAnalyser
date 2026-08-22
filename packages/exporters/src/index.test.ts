@@ -1,7 +1,7 @@
 import type { AnalysisRun } from '@track-analyser/domain'
 import { describe, expect, it } from 'vitest'
-import { participant, session } from '../../../tests/helpers'
-import { createBackupArchive, createTripArchive, migrateManifest, restoreBackupArchive, restoreTripArchive } from './index'
+import { participant, sample, session } from '../../../tests/helpers'
+import { createBackupArchive, createTripArchive, exportSessionGpx, migrateManifest, restoreBackupArchive, restoreTripArchive } from './index'
 
 const run: AnalysisRun = {
   id: 'run', sessionId: 'session', analysisVersion: '1', analysisProfileVersion: '1', engineBuildId: 'test',
@@ -10,6 +10,27 @@ const run: AnalysisRun = {
 }
 
 describe('archives froides versionnées', () => {
+  it('exporte une trace GPX 1.1 avec ses timestamps et l’altitude réellement mesurée', () => {
+    const currentSession = { ...session('session', 'damien'), title: 'Kuga & trajet <court>' }
+    const firstTimestamp = Date.parse('2026-08-21T10:00:00.000Z')
+    const gpx = exportSessionGpx(currentSession, [
+      sample('position', { latitude: 44.84, longitude: -0.58 }, firstTimestamp),
+      sample('altitude', 31.4, firstTimestamp),
+      sample('position', { latitude: 44.841, longitude: -0.579, altitude: 32.1 }, firstTimestamp + 1_000),
+      sample('position', { latitude: 120, longitude: -0.57 }, firstTimestamp + 2_000),
+    ])
+
+    expect(gpx).toContain('<gpx version="1.1" creator="TrackAnalyser"')
+    expect(gpx).toContain('<name>Kuga &amp; trajet &lt;court&gt;</name>')
+    expect(gpx).toContain('<trkpt lat="44.84" lon="-0.58">\n        <ele>31.4</ele>')
+    expect(gpx).toContain('<time>2026-08-21T10:00:01.000Z</time>')
+    expect(gpx.match(/<trkpt /g)).toHaveLength(2)
+  })
+
+  it('refuse un GPX sans position valide au lieu d’inventer une trace', () => {
+    expect(() => exportSessionGpx(session('session', 'damien'), [sample('altitude', 31, 1_000)])).toThrow(/Aucun point GPS/)
+  })
+
   it('réimporte un .tatrip avec son RAW', () => {
     const currentSession = { ...session('session', 'damien'), analysisRunIds: ['run'], originalAnalysisRunId: 'run', latestAnalysisRunId: 'run' }
     const raw = new Uint8Array([1, 2, 3, 4])

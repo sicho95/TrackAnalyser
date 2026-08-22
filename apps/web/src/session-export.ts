@@ -1,8 +1,10 @@
-import type { AnalysisRun, Segment, SensorSample, Session } from '@track-analyser/domain'
-import { createTripArchive, exportAnalysisCsv, exportSummaryJson } from '@track-analyser/exporters'
+import { createPipelineDataset, transitionDataset, type AnalysisRun, type Segment, type SensorSample, type Session } from '@track-analyser/domain'
+import { createTripArchive, exportAnalysisCsv, exportSessionGpx, exportSummaryJson } from '@track-analyser/exporters'
+import { DataFusionEngine, synchronizeByUtc } from '@track-analyser/fusion'
 import { ProgressiveRawStore } from '@track-analyser/storage'
+import { replayRawSamples } from './reanalysis'
 
-export type SessionExportKind = 'JSON' | 'CSV' | 'TATRIP'
+export type SessionExportKind = 'JSON' | 'CSV' | 'GPX' | 'TATRIP'
 
 export async function exportSession(session: Session, runs: readonly AnalysisRun[], segments: readonly Segment[], kind: SessionExportKind): Promise<void> {
   const current = runs.find((run) => run.id === session.latestAnalysisRunId) ?? runs.at(-1)
@@ -16,6 +18,16 @@ export async function exportSession(session: Session, runs: readonly AnalysisRun
     return
   }
   const store = new ProgressiveRawStore()
+  if (kind === 'GPX') {
+    const geographicSamples = await replayRawSamples(session.rawDataReferences, store, ['position', 'altitude'])
+    const raw = createPipelineDataset(session.id, session.participantId, geographicSamples, 'RAW')
+    const normalized = transitionDataset(raw, 'NORMALIZED')
+    const synchronized = synchronizeByUtc(normalized)
+    const fused = new DataFusionEngine(__ANALYSIS_VERSION__).fuse(synchronized, [{ channel: 'position', strategy: 'AUTO' }]).dataset
+    const fusedSamples = [...fused.channels.values()].flatMap((series) => series.samples)
+    download(exportSessionGpx(session, fusedSamples), `${session.id}.gpx`, 'application/gpx+xml')
+    return
+  }
   const rawFiles: Record<string, Uint8Array> = {}
   for (const reference of session.rawDataReferences) rawFiles[`${reference.id}.bin`] = await collect(store.read(reference))
   download(createTripArchive({ session, analysisRuns: [...runs], segments: [...segments], samples: previewSamples(current), rawFiles }), `${session.id}.tatrip`, 'application/zip')

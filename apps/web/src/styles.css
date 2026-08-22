@@ -178,6 +178,7 @@ html[data-recording="true"] .tab-bar { display: none; }
 .swipe-exports button { background: #267b73; }
 .swipe-exports button:nth-child(2) { background: #236d66; }
 .swipe-exports button:nth-child(3) { background: #1d5d57; }
+.swipe-exports button:nth-child(4) { background: #174f4a; }
 .swipe-delete { right: 0; border-radius: 0 17px 17px 0; }
 .swipe-delete button { width: 78px; background: #c53f48; }
 .empty-state { min-height: 280px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: var(--muted); }
@@ -232,7 +233,7 @@ html[data-recording="true"] .tab-bar { display: none; }
 .enrichment-candidate { display: grid; gap: 5px; padding: 13px; border-radius: 15px; background: var(--surface-2); }
 .enrichment-candidate > span { color: var(--muted); font-size: .72rem; }
 .enrichment-candidate .primary-button { margin-top: 8px; }
-.export-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+.export-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 14px 0; }
 .export-actions button, .technical-toggle { min-height: 46px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); display: flex; justify-content: center; align-items: center; gap: 7px; cursor: pointer; }
 .delete-session-button { width: 100%; min-height: 46px; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px; border: 1px solid color-mix(in srgb, #d44952 36%, var(--line)); border-radius: 14px; background: color-mix(in srgb, #d44952 8%, var(--surface)); color: #d44952; cursor: pointer; }
 .technical-toggle { width: 100%; }
