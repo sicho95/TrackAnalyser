@@ -1,7 +1,7 @@
 # TrackAnalyser — Spécification maître unifiée
 
 **Statut :** spécification fonctionnelle, technique, matérielle et produit autoritaire  
-**Version du document :** 1.6
+**Version du document :** 1.7
 **Date :** 22 août 2026
 **Dépôt applicatif :** `sicho95/TrackAnalyser`  
 **Mémoire SichoBrain :** `200_PROJECTS/TrackAnalyzer/SPEC.md`
@@ -798,7 +798,13 @@ Lisible humainement, adapté à l’archivage et à des traitements externes.
 
 Pour tableur, Python ou R.
 
-## 25.3. `.tatrip`
+## 25.3. GPX
+
+Export d’interopérabilité cartographique conforme à GPX 1.1. Produire une trace à partir de la source de position retenue par `DataFusionEngine` pour le canal `position`, jamais par concaténation naïve de plusieurs GPS. Conserver les coordonnées et timestamps réels, ainsi que l’altitude lorsqu’elle existe dans le point ou sur le canal `altitude` fusionné au même timestamp. Ne pas inventer une trace si aucun point GPS valide n’est disponible.
+
+GPX reste centré sur la géométrie du parcours. Les analyses, RAW, provenances complètes et canaux non cartographiques restent transportés par `.tatrip`, JSON ou CSV.
+
+## 25.4. `.tatrip`
 
 ZIP versionné contenant par exemple :
 
@@ -816,7 +822,7 @@ derived/
 
 Les gros flux peuvent être binaires/chunkés ; NDJSON reste possible lorsqu’il apporte lisibilité et streaming.
 
-## 25.4. `.tabackup`
+## 25.5. `.tabackup`
 
 Contenir :
 
@@ -897,7 +903,7 @@ Toutes les chaînes doivent être externalisées dès la V1 afin d’ajouter l�
 
 Sur mobile, chaque bulle de Session suit une interaction de glissement de type iOS :
 
-- glissement de gauche vers la droite : révéler les exports JSON, CSV et `.tatrip` ;
+- glissement de gauche vers la droite : révéler les exports JSON, CSV, GPX et `.tatrip` ;
 - glissement de droite vers la gauche : révéler la suppression ;
 - ne pas ajouter un menu « … » redondant lorsque toutes ses actions sont déjà accessibles par glissement et dans le détail ;
 - présenter les rails d’action comme la continuité arrondie de la bulle, sans boutons carrés détachés ;
@@ -1482,6 +1488,7 @@ La V1.0 doit être un produit réellement utilisable.
 
 - JSON ;
 - CSV ;
+- GPX ;
 - `.tatrip` ;
 - `.tabackup`.
 
@@ -1574,6 +1581,7 @@ La V1 est acceptable si notamment :
 39. un Wake Lock écran est demandé, diagnostiqué et réacquis pendant la Session lorsque le navigateur le permet ;
 40. l’arrêt sauvegarde et rattache le RAW avant de lancer une analyse différée ;
 41. une interruption avant finalisation récupère les chunks grâce au `activeRawStreamId`, et une analyse interrompue reprend au lancement suivant.
+42. les imports utilisent une icône de fichier entrant, les exports une icône de fichier sortant, et une Session disposant de positions réelles peut être exportée en GPX 1.1.
 
 ---
 

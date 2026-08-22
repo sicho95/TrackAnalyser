@@ -1,13 +1,13 @@
 import type { Session } from '@track-analyser/domain'
 import { StatusPill } from '@track-analyser/ui'
-import { Archive, FileJson, FileSpreadsheet, Trash2 } from 'lucide-react'
+import { Archive, FileJson, FileSpreadsheet, MapPinned, Trash2 } from 'lucide-react'
 import { useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { messages } from '../i18n'
 import type { SessionExportKind } from '../session-export'
 import { ActivityIcon } from './EquipmentIcon'
 
-const EXPORT_WIDTH = 174
+const EXPORT_WIDTH = 232
 const DELETE_WIDTH = 78
 
 export function SwipeSessionCard({ session, participantName, onExport, onDelete }: { session: Session; participantName: string; onExport(kind: SessionExportKind): Promise<void>; onDelete(): void }): ReactNode {
@@ -46,6 +46,7 @@ export function SwipeSessionCard({ session, participantName, onExport, onDelete 
     <div className="swipe-actions swipe-exports" aria-hidden={offset <= 0}>
       <button type="button" tabIndex={offset > 0 ? 0 : -1} onClick={() => void runExport('JSON')}><FileJson size={19} /><span>JSON</span></button>
       <button type="button" tabIndex={offset > 0 ? 0 : -1} onClick={() => void runExport('CSV')}><FileSpreadsheet size={19} /><span>CSV</span></button>
+      <button type="button" tabIndex={offset > 0 ? 0 : -1} onClick={() => void runExport('GPX')}><MapPinned size={19} /><span>GPX</span></button>
       <button type="button" tabIndex={offset > 0 ? 0 : -1} onClick={() => void runExport('TATRIP')}><Archive size={19} /><span>.tatrip</span></button>
     </div>
     <div className="swipe-actions swipe-delete" aria-hidden={offset >= 0}><button type="button" tabIndex={offset < 0 ? 0 : -1} onClick={onDelete}><Trash2 size={21} /><span>{messages.common.delete}</span></button></div>

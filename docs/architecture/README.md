@@ -9,7 +9,7 @@
 - `packages/storage` : repositories IndexedDB, chunks RAW et préférence OPFS ;
 - `packages/sensors` : sources smartphone, diagnostics et coordination d’acquisition ;
 - `packages/importers` : FIT, GPX, TCX, JSON, Apple Health fichier et `.tatrip` ;
-- `packages/exporters` : JSON, CSV, `.tatrip` et `.tabackup` ;
+- `packages/exporters` : JSON, CSV, GPX 1.1, `.tatrip` et `.tabackup` ;
 - `packages/fusion` : synchronisation UTC et sélection/fusion par canal ;
 - `packages/visualization` : registre sémantique et graphiques SVG ;
 - `packages/ui` : composants de navigation et de présentation ;

@@ -40,7 +40,8 @@ describe('actions et équipements de session', () => {
     fireEvent(front, new MouseEvent('pointermove', { bubbles: true, clientX: 380, clientY: 42 }))
     fireEvent(front, new MouseEvent('pointerup', { bubbles: true }))
     const exportButtons = container.querySelectorAll<HTMLButtonElement>('.swipe-exports button')
-    expect([...exportButtons].map((button) => button.tabIndex)).toEqual([0, 0, 0])
+    expect([...exportButtons].map((button) => button.tabIndex)).toEqual([0, 0, 0, 0])
+    expect([...exportButtons].map((button) => button.textContent)).toEqual(['JSON', 'CSV', 'GPX', '.tatrip'])
   })
 
   it('ouvre le détail lors d’un toucher simple sans capturer le pointeur', async () => {

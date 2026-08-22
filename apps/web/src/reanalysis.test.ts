@@ -34,4 +34,20 @@ describe('rejeu des RAW', () => {
     expect(replayed.map((sample) => sample.timestamp)).toEqual([1_000, 2_000])
     expect(samples.map((sample) => sample.timestamp)).toEqual([2_000, 1_000])
   })
+
+  it('filtre les canaux pendant la relecture streaming destinée à un export', async () => {
+    const geographic = [
+      { ...samples[0], timestamp: 1_000, channel: 'position' as const, value: { latitude: 44.84, longitude: -0.58 }, unit: 'WGS84' },
+      { ...samples[0], timestamp: 1_001, channel: 'acceleration' as const, value: 2.5, unit: 'm/s²' },
+      { ...samples[0], timestamp: 1_002, channel: 'altitude' as const, value: 31, unit: 'm' },
+    ]
+    const reader: RawReader = {
+      async *read(): AsyncGenerator<Uint8Array> {
+        yield new TextEncoder().encode(geographic.map((sample) => JSON.stringify(sample)).join('\n'))
+      },
+    }
+    const replayed = await replayRawSamples([reference], reader, ['position', 'altitude'])
+
+    expect(replayed.map((sample) => sample.channel)).toEqual(['position', 'altitude'])
+  })
 })

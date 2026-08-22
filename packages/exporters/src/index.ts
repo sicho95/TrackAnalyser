@@ -88,6 +88,59 @@ export function exportAnalysisCsv(run: AnalysisRun): string {
   return [header.join(','), ...lines].join('\n')
 }
 
+export function exportSessionGpx(session: Session, samples: readonly SensorSample[]): string {
+  const altitudeByTimestamp = new Map(
+    samples
+      .filter((sample) => sample.channel === 'altitude' && typeof sample.value === 'number' && Number.isFinite(sample.value))
+      .map((sample) => [sample.timestamp, Number(sample.value)]),
+  )
+  const points = samples
+    .filter((sample) => sample.channel === 'position' && isValidPosition(sample.value) && Number.isFinite(sample.timestamp))
+    .toSorted((left, right) => left.timestamp - right.timestamp || (left.sequence ?? 0) - (right.sequence ?? 0))
+
+  if (points.length === 0) throw new Error('Aucun point GPS disponible pour l’export GPX.')
+  const title = session.title?.trim()
+  const name = xmlEscape(title === undefined || title.length === 0 ? `Session ${session.startTime}` : title)
+  const trackPoints = points.map((sample) => {
+    const point = sample.value as { latitude: number; longitude: number; altitude?: number }
+    const altitude = point.altitude === undefined || !Number.isFinite(point.altitude) ? altitudeByTimestamp.get(sample.timestamp) : point.altitude
+    const elevation = altitude === undefined ? '' : `\n        <ele>${altitude}</ele>`
+    return `      <trkpt lat="${point.latitude}" lon="${point.longitude}">${elevation}\n        <time>${new Date(sample.timestamp).toISOString()}</time>\n      </trkpt>`
+  }).join('\n')
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="TrackAnalyser" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 https://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>${name}</name>
+    <time>${new Date(session.startTime).toISOString()}</time>
+  </metadata>
+  <trk>
+    <name>${name}</name>
+    <type>${session.activityType}</type>
+    <trkseg>
+${trackPoints}
+    </trkseg>
+  </trk>
+</gpx>`
+}
+
+function isValidPosition(value: SensorSample['value']): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  if (!('latitude' in value) || !('longitude' in value)) return false
+  const { latitude, longitude } = value
+  return typeof latitude === 'number' && Number.isFinite(latitude) && latitude >= -90 && latitude <= 90
+    && typeof longitude === 'number' && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180
+}
+
+function xmlEscape(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;')
+}
+
 export function createTripArchive(input: TripArchiveInput): Uint8Array {
   const manifest: ArchiveManifest = {
     format: 'tatrip',
