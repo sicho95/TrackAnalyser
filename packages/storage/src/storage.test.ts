@@ -16,6 +16,31 @@ describe('stockage local résilient', () => {
     const recovered = await service.recoverInterrupted()
     expect(recovered.map((item) => item.id)).toContain(current.id)
     expect((await repositories.sessions.get(current.id))?.status).toBe('INTERRUPTED')
+    expect((await repositories.getSettings()).activeSessionId).toBeUndefined()
+  })
+
+  it('rattache les chunks progressifs à la Session après une interruption Safari', async () => {
+    const repositories = await LocalRepositories.open()
+    const rawStore = new ProgressiveRawStore()
+    const service = new SessionCheckpointService(repositories, rawStore)
+    const current = { ...session('recoverable', 'damien'), status: 'DRAFT' as const, activeRawStreamId: 'stream-recoverable' }
+    delete current.endTime
+    const bytes = new TextEncoder().encode('{"timestamp":1000}\n{"timestamp":2000}\n')
+    await rawStore.write(current.activeRawStreamId, chunkBytes(bytes, 12), { sessionId: current.id, sourceId: 'phone', mediaType: 'application/x-ndjson' })
+    await service.markRecording(current)
+
+    await service.recoverInterrupted()
+
+    const recovered = await repositories.sessions.get(current.id)
+    expect(recovered?.status).toBe('COMPLETED')
+    expect(recovered?.analysisStatus).toBe('PENDING')
+    expect(recovered?.activeRawStreamId).toBeUndefined()
+    expect(recovered?.rawDataReferences).toHaveLength(1)
+    expect(recovered?.rawDataReferences[0]).toMatchObject({ id: 'stream-recoverable', storage: 'INDEXED_DB', byteLength: bytes.byteLength, chunkCount: 4 })
+    const replayed: number[] = []
+    const reference = recovered?.rawDataReferences[0]
+    if (reference !== undefined) for await (const chunk of rawStore.read(reference)) replayed.push(...chunk)
+    expect(replayed).toEqual([...bytes])
   })
 
   it('chunk les RAW et refuse une modification sous la même identité', async () => {

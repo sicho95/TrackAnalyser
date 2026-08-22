@@ -74,10 +74,8 @@ async function writeResilient(
     }
   }
   const storage = writable === undefined ? 'INDEXED_DB' : 'OPFS'
-  if (storage === 'OPFS') {
-    const keys = await database.getAllKeysFromIndex('rawChunks', 'streamId', streamId)
-    await Promise.allSettled(keys.map((key) => database.delete('rawChunks', key)))
-  }
+  // Conserver temporairement le miroir IndexedDB jusqu'au rattachement de la référence à la Session.
+  // Permettre ainsi une récupération même si Safari suspend la page juste après la fermeture OPFS.
   return { byteLength, sha256: bytesToHex(hasher.digest()), chunkCount, storage }
 }
 
@@ -115,6 +113,39 @@ export class ProgressiveRawStore {
     const database = await openTrackAnalyserDatabase()
     const chunks = await database.getAllFromIndex('rawChunks', 'streamId', reference.id)
     for (const chunk of chunks.toSorted((left, right) => left.index - right.index)) yield chunk.bytes
+  }
+
+  async recoverReference(streamId: string, options: RawWriteOptions): Promise<RawDataReference | undefined> {
+    const database = await openTrackAnalyserDatabase()
+    const chunks = (await database.getAllFromIndex('rawChunks', 'streamId', streamId)).toSorted((left, right) => left.index - right.index)
+    if (chunks.length === 0) return undefined
+    const hasher = sha256.create()
+    let byteLength = 0
+    chunks.forEach((chunk, index) => {
+      if (chunk.index !== index || bytesToHex(sha256(chunk.bytes)) !== chunk.sha256) throw new Error(`Flux RAW interrompu invalide : ${streamId}.`)
+      hasher.update(chunk.bytes)
+      byteLength += chunk.bytes.byteLength
+    })
+    return {
+      id: streamId,
+      sessionId: options.sessionId,
+      sourceId: options.sourceId,
+      storage: 'INDEXED_DB',
+      path: streamId,
+      mediaType: options.mediaType,
+      byteLength,
+      sha256: bytesToHex(hasher.digest()),
+      chunkCount: chunks.length,
+      immutable: true,
+      ...(options.importedFileName === undefined ? {} : { importedFileName: options.importedFileName }),
+      createdAt: chunks[0]?.createdAt ?? new Date().toISOString(),
+    }
+  }
+
+  async discardIndexedDbMirror(streamId: string): Promise<void> {
+    const database = await openTrackAnalyserDatabase()
+    const keys = await database.getAllKeysFromIndex('rawChunks', 'streamId', streamId)
+    await Promise.allSettled(keys.map((key) => database.delete('rawChunks', key)))
   }
 
   async delete(reference: RawDataReference): Promise<void> {

@@ -41,6 +41,7 @@ export class AcquisitionCoordinator {
   private writePromise: Promise<RawDataReference> | undefined
   private session: Session | undefined
   private checkpointSamples: SensorSample[] = []
+  private checkpointPromise: Promise<void> = Promise.resolve()
   private state: AcquisitionState = { status: 'IDLE', sampleCount: 0, sourceErrors: [] }
 
   constructor(
@@ -56,16 +57,17 @@ export class AcquisitionCoordinator {
   async start(session: Session): Promise<void> {
     if (session.participantId.length === 0) throw new Error('Sélectionner un participant avant l’enregistrement.')
     if (this.state.status !== 'IDLE') throw new Error('Une acquisition est déjà active.')
-    this.session = session
-    this.state = { status: 'STARTING', sampleCount: 0, sourceErrors: [] }
-    await this.checkpoints.markRecording(session)
     const streamId = `raw-${session.id}-${crypto.randomUUID()}`
+    const recordingSession = { ...session, activeRawStreamId: streamId }
+    this.session = recordingSession
+    this.state = { status: 'STARTING', sampleCount: 0, sourceErrors: [] }
+    await this.checkpoints.markRecording(recordingSession)
     this.writePromise = this.rawStore.write(streamId, this.queue, {
       sessionId: session.id,
       sourceId: 'phone',
       mediaType: 'application/x-ndjson',
     })
-    this.sources.forEach((source) => this.unsubscribe.push(source.subscribe((sample) => void this.onSample(sample))))
+    this.sources.forEach((source) => this.unsubscribe.push(source.subscribe((sample) => this.onSample(sample))))
     try {
       const starts = await Promise.allSettled(this.sources.map((source) => source.start()))
       const errors = starts.flatMap((result) => result.status === 'rejected' ? [String(result.reason)] : [])
@@ -83,21 +85,29 @@ export class AcquisitionCoordinator {
     if (session === undefined || this.writePromise === undefined) throw new Error('Aucune acquisition active.')
     this.state = { ...this.state, status: 'STOPPING' }
     await this.stopSources()
+    await this.checkpointPromise
     this.queue.close()
     const reference = await this.writePromise
-    await this.checkpoints.complete({ ...session, rawDataReferences: [...session.rawDataReferences, reference] })
+    const completedSession = { ...session, analysisStatus: 'PENDING' as const, rawDataReferences: [...session.rawDataReferences, reference] }
+    delete completedSession.activeRawStreamId
+    await this.checkpoints.complete(completedSession)
     this.state = { ...this.state, status: 'IDLE' }
     return reference
   }
 
-  private async onSample(sample: SensorSample): Promise<void> {
+  private onSample(sample: SensorSample): void {
     this.queue.push(this.encoder.encode(`${JSON.stringify(sample)}\n`))
     this.checkpointSamples.push(sample)
     this.state = { ...this.state, sampleCount: this.state.sampleCount + 1, lastTimestamp: sample.timestamp }
     if (this.checkpointSamples.length >= 100 && this.session !== undefined) {
       const samples = this.checkpointSamples
+      const session = this.session
       this.checkpointSamples = []
-      await this.checkpoints.checkpoint(this.session, samples)
+      this.checkpointPromise = this.checkpointPromise
+        .then(async () => { await this.checkpoints.checkpoint(session, samples) })
+        .catch((error: unknown) => {
+          this.state = { ...this.state, sourceErrors: [...this.state.sourceErrors, `Checkpoint : ${String(error)}`] }
+        })
     }
   }
 

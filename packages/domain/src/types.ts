@@ -165,6 +165,9 @@ export interface Session {
   originalAnalysisRunId?: string
   latestAnalysisRunId?: string
   status: 'DRAFT' | 'RECORDING' | 'INTERRUPTED' | 'COMPLETED'
+  analysisStatus?: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  analysisError?: string
+  activeRawStreamId?: string
   checkpointAt?: string
   title?: string
 }
