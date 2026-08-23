@@ -79,13 +79,48 @@ describe('stockage local résilient', () => {
     await expect(store.write('stream-1', chunkBytes(new TextEncoder().encode('changed'), 4), { sessionId: 's', sourceId: 'phone', mediaType: 'application/octet-stream' })).rejects.toThrow(/immuable/i)
   })
 
+  it('reprend dans le miroir IndexedDB après une erreur de lecture OPFS Safari', async () => {
+    const store = new ProgressiveRawStore()
+    const original = Uint8Array.from({ length: 300_000 }, (_, index) => index % 251)
+    const stored = await store.write('stream-opfs-fallback', chunkBytes(original, 64 * 1024), { sessionId: 's', sourceId: 'phone', mediaType: 'application/octet-stream' })
+    const storageDescriptor = Object.getOwnPropertyDescriptor(navigator, 'storage')
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: {
+        getDirectory: async () => ({
+          getDirectoryHandle: async () => ({
+            getFileHandle: async () => ({
+              getFile: async () => ({
+                size: original.byteLength,
+                slice: (start: number, end: number) => start === 0
+                  ? new Blob([original.slice(start, end) as unknown as BlobPart])
+                  : { arrayBuffer: async () => { throw new DOMException('The I/O read operation failed.', 'NotReadableError') } },
+              }),
+            }),
+          }),
+        }),
+      },
+    })
+    try {
+      const replayed: number[] = []
+      for await (const chunk of store.read({ ...stored, storage: 'OPFS', path: 'track-analyser-raw/stream-opfs-fallback.bin' })) replayed.push(...chunk)
+      expect(replayed).toEqual([...original])
+    } finally {
+      if (storageDescriptor === undefined) Reflect.deleteProperty(navigator, 'storage')
+      else Object.defineProperty(navigator, 'storage', storageDescriptor)
+    }
+  })
+
   it('supprime tous les chunks RAW associés à une session', async () => {
     const store = new ProgressiveRawStore()
     const reference = await store.write('stream-delete', chunkBytes(new TextEncoder().encode('à supprimer'), 3), { sessionId: 'session-delete', sourceId: 'phone', mediaType: 'application/octet-stream' })
     await store.delete(reference)
-    const bytes: number[] = []
-    for await (const chunk of store.read(reference)) bytes.push(...chunk)
-    expect(bytes).toEqual([])
+    await expect((async () => {
+      for await (const chunk of store.read(reference)) {
+        // Parcourir le flux afin de vérifier que la référence supprimée ne reste pas lisible.
+        expect(chunk.byteLength).toBe(0)
+      }
+    })()).rejects.toThrow(/Chunk RAW manquant/)
   })
 
   it('supprime atomiquement la session, ses analyses et segments sans effacer les autres participants', async () => {

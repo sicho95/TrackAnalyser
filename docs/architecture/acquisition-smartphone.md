@@ -30,4 +30,6 @@ Les PWA iOS installées activent aussi le repli média local de `nosleep.js`, m�
 
 Éteindre ou verrouiller volontairement l’écran n’est pas un mode supporté pour l’acquisition smartphone V1 : iOS peut suspendre la page, DeviceMotion et Geolocation. Si le verrou natif et le repli échouent, l’écran d’acquisition affiche donc « ne pas verrouiller l’iPhone ». Les chunks et checkpoints restent la protection autoritaire contre une suspension malgré tout.
 
+Une reprise après suspension ne transforme pas la période sans mesure en trajet observé. L’analyse sépare les portions de trace de part et d’autre du trou, exclut cet intervalle des distances et durées dynamiques, calcule une couverture temporelle sur la durée réelle de la Session et diminue la confiance des métriques en conséquence. Le récapitulatif affiche un avertissement lorsque cette couverture est inférieure à 95 %. La durée écoulée de la Session reste conservée comme donnée temporelle, sans prétendre que les capteurs ont couvert toute cette durée.
+
 La vue d’enregistrement utilise une grille bornée à `100dvh`. Les cartes ont des pistes de hauteur stables et masquent la navigation générale. Le remplacement d’un état d’attente par une jauge ou une courbe ne change pas la hauteur du document et le bouton d’arrêt reste visible sans défilement.

@@ -50,7 +50,7 @@ test('crée un participant puis enregistre et analyse hors cloud', async ({ page
   await page.getByRole('combobox', { name: 'Type' }).selectOption({ label: 'Voiture' })
   await page.getByRole('button', { name: 'Ajouter l’équipement' }).click()
   await expect(page.getByRole('img', { name: 'Équipement voiture' })).toBeVisible()
-  await page.getByRole('combobox', { name: 'Profil source' }).selectOption({ label: 'CAR · Profil CAR V1 · 1.0.0' })
+  await page.getByRole('combobox', { name: 'Profil source' }).selectOption({ label: 'CAR · Profil CAR V1 · 1.0.1' })
   await page.getByRole('button', { name: 'Conserver cette nouvelle version' }).click()
   await expect(page.getByText(/version 1\.1\.0 conservé/)).toBeVisible()
   await page.getByRole('link', { name: /Accueil/ }).click()

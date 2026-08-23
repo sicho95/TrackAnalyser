@@ -227,6 +227,9 @@ html[data-recording="true"] .tab-bar { display: none; }
 .analysis-state svg { flex: 0 0 auto; color: var(--accent); }
 .analysis-state p { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.45; }
 .analysis-state small { display: block; margin-top: 5px; color: var(--danger); }
+.analysis-warning { margin: 0 0 14px; padding: 14px 16px; border: 1px solid rgba(231,168,74,.3); border-radius: 18px; background: rgba(231,168,74,.08); color: var(--muted); }
+.analysis-warning strong { color: #e7a84a; }
+.analysis-warning p { margin: 5px 0 0; font-size: .8rem; line-height: 1.45; }
 .reanalysis-panel > div:first-child, .segment-panel > div:first-child, .enrichment-panel > div:first-child { display: flex; align-items: flex-start; gap: 12px; }
 .reanalysis-panel > div:first-child > svg, .segment-panel > div:first-child > svg, .enrichment-panel > div:first-child > svg { color: var(--accent); flex: 0 0 auto; }
 .reanalysis-panel p, .segment-panel p, .enrichment-panel p { margin: 3px 0 0; color: var(--muted); font-size: .76rem; }

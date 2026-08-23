@@ -329,6 +329,7 @@ export interface AnalysisResult {
   warnings: string[]
   visualizationSeries: Record<string, number[]>
   routePreview: GeoPoint[]
+  routePreviewSegments?: GeoPoint[][]
 }
 
 export interface SessionQuality {

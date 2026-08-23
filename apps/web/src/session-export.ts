@@ -6,7 +6,13 @@ import { replayRawSamples } from './reanalysis'
 
 export type SessionExportKind = 'JSON' | 'CSV' | 'GPX' | 'TATRIP'
 
-export async function exportSession(session: Session, runs: readonly AnalysisRun[], segments: readonly Segment[], kind: SessionExportKind): Promise<void> {
+export async function exportSession(
+  session: Session,
+  runs: readonly AnalysisRun[],
+  segments: readonly Segment[],
+  kind: SessionExportKind,
+  maximumContinuityGapMs = 60_000,
+): Promise<void> {
   const current = runs.find((run) => run.id === session.latestAnalysisRunId) ?? runs.at(-1)
   if (kind === 'JSON') {
     download(exportSummaryJson(session, runs), `${session.id}.json`, 'application/json')
@@ -25,7 +31,7 @@ export async function exportSession(session: Session, runs: readonly AnalysisRun
     const synchronized = synchronizeByUtc(normalized)
     const fused = new DataFusionEngine(__ANALYSIS_VERSION__).fuse(synchronized, [{ channel: 'position', strategy: 'AUTO' }]).dataset
     const fusedSamples = [...fused.channels.values()].flatMap((series) => series.samples)
-    download(exportSessionGpx(session, fusedSamples), `${session.id}.gpx`, 'application/gpx+xml')
+    download(exportSessionGpx(session, fusedSamples, maximumContinuityGapMs), `${session.id}.gpx`, 'application/gpx+xml')
     return
   }
   const rawFiles: Record<string, Uint8Array> = {}
