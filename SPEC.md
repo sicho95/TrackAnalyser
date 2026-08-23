@@ -422,7 +422,11 @@ Après l’action « Démarrer » :
 7. à l’issue du compte à rebours, conserver un `CalibrationSnapshot`, créer réellement la Session puis démarrer l’écriture progressive ;
 8. si `DeviceMotion` reste indisponible, démarrer avec GNSS et les autres sources disponibles sans inventer les canaux IMU.
 
-Pendant toute Session active, demander un `screen` Wake Lock lorsque l’API navigateur est disponible. Afficher son état dans le diagnostic, le réacquérir lorsque la page redevient visible et le libérer uniquement après l’arrêt ou l’abandon. Cette demande reste consultative : Safari ou iOS peuvent la refuser ou la lever en économie d’énergie, batterie faible, changement d’application ou verrouillage manuel. Une levée du Wake Lock ne doit donc jamais constituer l’unique protection des données.
+Pendant toute Session active, demander un `screen` Wake Lock lorsque l’API navigateur est disponible. Déclencher cette demande dès le geste utilisateur « Démarrer », parallèlement à la permission DeviceMotion et avant le compte à rebours. Conserver son contrôleur au niveau du cycle d’acquisition, et non au niveau d’un écran React susceptible d’être démonté. Afficher son état dans le diagnostic, le réacquérir lorsque la page redevient visible, lorsqu’elle reçoit de nouveau le focus ou lorsque le système libère transitoirement la sentinelle, puis le libérer uniquement après l’arrêt ou l’abandon.
+
+Sur une PWA iOS installée, activer en parallèle un repli média local minimal compatible avec les régressions WebKit connues du Wake Lock en mode Home Screen. Ce repli ne doit utiliser ni réseau, ni audio audible, ni donnée personnelle ; son état doit rester distinguable du verrou natif dans le diagnostic. Le supprimer immédiatement à la fin de l’acquisition.
+
+L’acquisition smartphone de la V1 n’est pas annoncée comme fiable écran volontairement éteint : lorsque l’écran est verrouillé, iOS peut rendre le document invisible puis suspendre JavaScript, DeviceMotion et Geolocation. Le téléphone doit donc rester sur la PWA au premier plan et l’écran actif. Une levée du Wake Lock, un passage en arrière-plan ou un verrouillage manuel ne doit jamais constituer l’unique protection des données : l’écriture progressive et les checkpoints restent autoritaires, et l’interface doit avertir explicitement de ne pas verrouiller l’iPhone lorsque le maintien d’écran est en échec.
 
 L’écran temps réel doit occuper exactement la hauteur dynamique visible du navigateur, y compris dans Safari avec ses barres variables. Son en-tête, ses cartes, les diagnostics et l’action d’arrêt conservent des emplacements stables. Une mise à jour de valeur, l’apparition d’une courbe ou le passage de « en attente » à une mesure ne doit ni modifier la hauteur de page ni provoquer de défilement vertical. La navigation générale est masquée pendant l’acquisition afin d’éviter une sortie accidentelle et de réserver la hauteur aux mesures et à l’arrêt.
 
@@ -1598,7 +1602,7 @@ La V1 est acceptable si notamment :
 36. les exports et la suppression sont accessibles par glissement, et la suppression exige deux confirmations.
 37. un segment peut se prolonger sans longueur maximale tant que la similarité glissante reste suffisante et s’arrête lorsque cette similarité passe sous le seuil.
 38. l’écran d’enregistrement reste contenu dans la hauteur visible Safari sans saut de page lors des rafraîchissements ;
-39. un Wake Lock écran est demandé, diagnostiqué et réacquis pendant la Session lorsque le navigateur le permet ;
+39. le Wake Lock écran est demandé dès le geste de départ, reste attaché au cycle d’acquisition, est diagnostiqué et réacquis automatiquement ; une PWA iOS installée dispose du repli local de compatibilité et avertit explicitement lorsque l’écran ne peut pas être maintenu ;
 40. l’arrêt sauvegarde et rattache le RAW avant de lancer une analyse différée ;
 41. une interruption avant finalisation récupère les chunks grâce au `activeRawStreamId`, et une analyse interrompue reprend au lancement suivant.
 42. les imports utilisent une flèche descendante entrant dans une boîte, les exports une flèche montante sortant de cette boîte, et une Session disposant de positions réelles peut être exportée en GPX 1.1.

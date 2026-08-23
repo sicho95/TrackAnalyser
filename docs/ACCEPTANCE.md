@@ -5,7 +5,7 @@ Cette matrice complète `SPEC.md` sans le remplacer.
 | Critère | Preuve dans le dépôt |
 |---|---|
 | PWA iOS, Pages, HashRouter, offline | manifeste, `vite.config.ts`, `sw.ts`, CI et E2E offline Chromium |
-| Session smartphone | derniers choix persistés, permission DeviceMotion dans le geste iOS, compte à rebours annulable, zéro de fixation hors RAW, Geolocation, Wake Lock diagnostiqué, écran `100dvh` stable, acquisition progressive et checkpoints |
+| Session smartphone | derniers choix persistés, permission DeviceMotion et Wake Lock déclenchés dans le geste iOS, compte à rebours annulable, zéro de fixation hors RAW, Geolocation, réacquisition automatique et repli Home Screen iOS diagnostiqué, écran `100dvh` stable, acquisition progressive et checkpoints |
 | Participant obligatoire | domaine, écran de démarrage/import et tests multi-participant |
 | Dix analyseurs | registre exhaustif et test paramétré sur les dix activités |
 | RAW immuable | OPFS avec miroir/fallback IndexedDB, SHA-256, test de réécriture interdite |

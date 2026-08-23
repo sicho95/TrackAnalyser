@@ -30,6 +30,7 @@ import { chunkBytes, LocalRepositories, ProgressiveRawStore, SessionCheckpointSe
 import { AcquisitionCoordinator, PhoneLocationSensorSource, PhoneMotionSensorSource, createObservedPhoneProfile } from '@track-analyser/sensors'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { needsInitialAnalysis } from './session-analysis'
+import { createIOSWakeLockFallback, ScreenWakeLockController, type ScreenWakeLockSource, type ScreenWakeLockState } from './wake-lock'
 
 interface AppData {
   ready: boolean
@@ -45,6 +46,7 @@ interface AppData {
   liveSamples: SensorSample[]
   acquisitionStatus: string
   acquisitionErrors: string[]
+  wakeLockState: ScreenWakeLockState
   addParticipant(name: string): Promise<Participant>
   addEquipment(name: string, type: string): Promise<Equipment>
   createActivityGroup(sessionIds: string[], title?: string): Promise<ActivityGroup>
@@ -89,7 +91,9 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
   const [liveSamples, setLiveSamples] = useState<SensorSample[]>([])
   const [acquisitionStatus, setAcquisitionStatus] = useState('IDLE')
   const [acquisitionErrors, setAcquisitionErrors] = useState<string[]>([])
+  const [wakeLockState, setWakeLockState] = useState<ScreenWakeLockState>('IDLE')
   const coordinator = useRef<AcquisitionCoordinator | undefined>(undefined)
+  const wakeLockController = useRef<ScreenWakeLockController | undefined>(undefined)
   const preparedStart = useRef<{
     participantId: string
     activityType: ActivityType
@@ -101,6 +105,23 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
   } | undefined>(undefined)
   const liveSamplesRef = useRef<SensorSample[]>([])
   const polling = useRef<number | undefined>(undefined)
+
+  const getWakeLockController = useCallback((): ScreenWakeLockController => {
+    if (wakeLockController.current !== undefined) return wakeLockController.current
+    const source = 'wakeLock' in navigator ? navigator.wakeLock as ScreenWakeLockSource : undefined
+    wakeLockController.current = new ScreenWakeLockController(
+      source,
+      document,
+      setWakeLockState,
+      window,
+      createIOSWakeLockFallback(navigator, window, document),
+    )
+    return wakeLockController.current
+  }, [])
+
+  useEffect(() => () => {
+    void wakeLockController.current?.stop()
+  }, [])
 
   const refresh = useCallback(async (): Promise<void> => {
     const currentRepositories = repositoriesRef.current
@@ -190,8 +211,10 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     phone.assignedParticipantId = participantId
     const motion = new PhoneMotionSensorSource(phone.id)
     const location = new PhoneLocationSensorSource(phone.id)
-    // Déclencher la demande iOS pendant le geste utilisateur, avant tout accès asynchrone au stockage.
-    let motionAvailable = await motion.requestPermission()
+    // Déclencher les deux demandes iOS dans le geste utilisateur, avant toute attente asynchrone.
+    const wakeLockStart = getWakeLockController().start()
+    const [initialMotionAvailable] = await Promise.all([motion.requestPermission(), wakeLockStart])
+    let motionAvailable = initialMotionAvailable
     if (motionAvailable) {
       motion.beginMountingZero()
       try {
@@ -211,12 +234,13 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
       motionAvailable,
     }
     return { motionAvailable }
-  }, [activeSession, participants, repositories])
+  }, [activeSession, getWakeLockController, participants, repositories])
 
   const cancelPreparedSession = useCallback(async (): Promise<void> => {
     const prepared = preparedStart.current
     preparedStart.current = undefined
     if (prepared !== undefined) await prepared.motion.stop()
+    if (coordinator.current === undefined) await wakeLockController.current?.stop()
   }, [])
 
   const commitPreparedSession = useCallback(async (): Promise<Session> => {
@@ -287,6 +311,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     const reference = await coordinator.current.stop()
     const completed = (await repositories.sessions.get(activeSession.id)) ?? { ...activeSession, rawDataReferences: [reference], status: 'COMPLETED' as const, analysisStatus: 'PENDING' as const, endTime: new Date().toISOString() }
     coordinator.current = undefined
+    await wakeLockController.current?.stop()
     setActiveSession(undefined)
     setAcquisitionStatus('IDLE')
     setAcquisitionErrors([])
@@ -436,6 +461,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     liveSamples,
     acquisitionStatus,
     acquisitionErrors,
+    wakeLockState,
     addParticipant,
     addEquipment,
     createActivityGroup,
@@ -450,7 +476,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     updateSettings,
     refresh,
     ...(repositories === undefined ? {} : { repositories }),
-  }), [acquisitionErrors, acquisitionStatus, activeSession, activityGroups, addEquipment, addParticipant, analysisProfiles, analysisRuns, cancelPreparedSession, commitPreparedSession, createActivityGroup, createAnalysisProfile, deleteSession, equipment, importData, liveSamples, participants, prepareSessionStart, reanalyzeSession, repositories, refresh, segments, sessions, settings, stopSession, updateSettings])
+  }), [acquisitionErrors, acquisitionStatus, activeSession, activityGroups, addEquipment, addParticipant, analysisProfiles, analysisRuns, cancelPreparedSession, commitPreparedSession, createActivityGroup, createAnalysisProfile, deleteSession, equipment, importData, liveSamples, participants, prepareSessionStart, reanalyzeSession, repositories, refresh, segments, sessions, settings, stopSession, updateSettings, wakeLockState])
 
   return <AppDataContext value={value}>{children}</AppDataContext>
 }
