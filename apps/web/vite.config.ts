@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 const buildId = process.env.BUILD_ID ?? new Date().toISOString().replaceAll(/\D/g, '').slice(0, 14)
 const appVersion = process.env.APP_VERSION ?? '1.0.0'
 const gitCommit = process.env.GITHUB_SHA ?? 'local'
-const analysisVersion = '1.0.1'
+const analysisVersion = '1.1.0'
 
 export default defineConfig({
   base: '/TrackAnalyser/',

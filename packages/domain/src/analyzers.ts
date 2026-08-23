@@ -6,6 +6,7 @@ import type {
   AnalysisProfile,
   AnalysisResult,
   AnalysisRun,
+  MetricStatistics,
   ChannelSeries,
   GeoPoint,
   MetricChannel,
@@ -376,21 +377,7 @@ function eventsFor(context: AnalyzerContext): AnalysisEvent[] {
   const longitudinal = context.series('longitudinalAcceleration')?.samples
   const accelerationThreshold = context.profile.parameters.harshAccelerationThresholdMps2 ?? 2.5
   const brakingThreshold = context.profile.parameters.harshBrakingThresholdMps2 ?? -3
-  longitudinal?.forEach((sample) => {
-    if (typeof sample.value !== 'number') return
-    const type = sample.value >= accelerationThreshold ? 'ACCELERATION' : sample.value <= brakingThreshold ? 'BRAKING' : undefined
-    if (type !== undefined) {
-      events.push({
-        id: `${type.toLowerCase()}-${sample.timestamp}-${events.length}`,
-        type,
-        startTime: sample.timestamp,
-        endTime: sample.timestamp,
-        severity: Math.abs(sample.value),
-        metrics: { acceleration: sample.value },
-        context: comparableContext(context, type, sample.timestamp, sample.quality),
-      })
-    }
-  })
+  appendGroupedThresholdEvents(context, events, longitudinal ?? [], (value) => value >= accelerationThreshold ? 'ACCELERATION' : value <= brakingThreshold ? 'BRAKING' : undefined, 'acceleration')
   if (context.profile.activityType === 'PARAGLIDING') {
     const vertical = context.series('verticalSpeed')?.samples ?? []
     const threshold = context.profile.parameters.climbThresholdMps ?? 0.3
@@ -410,22 +397,53 @@ function eventsFor(context: AnalyzerContext): AnalysisEvent[] {
   }
   if (context.profile.activityType === 'BOAT') {
     const threshold = context.profile.parameters.vibrationImpactThresholdMps2 ?? 8
-    context.series('verticalAcceleration')?.samples.forEach((sample) => {
-      if (typeof sample.value === 'number' && Math.abs(sample.value) >= threshold) {
-        events.push({ id: `impact-${sample.timestamp}`, type: 'IMPACT', startTime: sample.timestamp, endTime: sample.timestamp, severity: Math.abs(sample.value), metrics: { verticalAcceleration: sample.value }, context: comparableContext(context, 'IMPACT', sample.timestamp, sample.quality) })
-      }
-    })
+    appendGroupedThresholdEvents(context, events, context.series('verticalAcceleration')?.samples ?? [], (value) => Math.abs(value) >= threshold ? 'IMPACT' : undefined, 'verticalAcceleration')
   }
   if (context.profile.activityType === 'MOTORCYCLE') {
-    context.series('roll')?.samples.forEach((sample) => {
-      if (typeof sample.value === 'number' && Math.abs(sample.value) >= 0.35) {
-        const type = sample.value < 0 ? 'LEAN_LEFT' : 'LEAN_RIGHT'
-        events.push({ id: `lean-${sample.timestamp}`, type, startTime: sample.timestamp, endTime: sample.timestamp, severity: Math.abs(sample.value), metrics: { roll: sample.value }, context: comparableContext(context, type, sample.timestamp, sample.quality) })
-      }
-    })
+    appendGroupedThresholdEvents(context, events, context.series('roll')?.samples ?? [], (value) => Math.abs(value) >= 0.35 ? value < 0 ? 'LEAN_LEFT' : 'LEAN_RIGHT' : undefined, 'roll')
   }
   if (context.profile.activityType === 'AIRCRAFT') aircraftPhases(context).forEach((event) => events.push(event))
   return events
+}
+
+function appendGroupedThresholdEvents(
+  context: AnalyzerContext,
+  target: AnalysisEvent[],
+  samples: readonly SensorSample[],
+  classify: (value: number) => string | undefined,
+  metricKey: string,
+): void {
+  let active: { type: string; startTime: number; endTime: number; severity: number; value: number; quality: number } | undefined
+  const finish = (): void => {
+    if (active === undefined) return
+    target.push({
+      id: `${active.type.toLowerCase()}-${active.startTime}`,
+      type: active.type,
+      startTime: active.startTime,
+      endTime: active.endTime,
+      severity: active.severity,
+      metrics: { [metricKey]: active.value },
+      context: comparableContext(context, active.type, active.startTime, active.quality, (active.endTime - active.startTime) / 1_000),
+    })
+    active = undefined
+  }
+  samples.forEach((sample) => {
+    if (typeof sample.value !== 'number') { finish(); return }
+    const type = classify(sample.value)
+    if (type === undefined) { finish(); return }
+    if (active?.type !== type || sample.timestamp - active.endTime > 1_000) {
+      finish()
+      active = { type, startTime: sample.timestamp, endTime: sample.timestamp, severity: Math.abs(sample.value), value: sample.value, quality: sample.quality }
+      return
+    }
+    active.endTime = sample.timestamp
+    if (Math.abs(sample.value) > active.severity) {
+      active.severity = Math.abs(sample.value)
+      active.value = sample.value
+    }
+    active.quality = Math.min(active.quality, sample.quality)
+  })
+  finish()
 }
 
 function aircraftPhases(context: AnalyzerContext): AnalysisEvent[] {
@@ -571,16 +589,39 @@ export function executeAnalysis(
   if (session.participantId !== dataset.participantId) throw new Error('Le jeu de données appartient à un autre participant.')
   if (dataset.stage !== 'DERIVED') throw new Error('L’analyse exige un jeu de données DERIVED.')
   const result = ACTIVITY_ANALYZERS[session.activityType].analyze(dataset, profile)
+  return createAnalysisRun(session, result, profile, previousRuns, options, dataset)
+}
+
+export function executeBatchedAnalysis(
+  session: Session,
+  results: readonly AnalysisResult[],
+  profile: AnalysisProfile,
+  previousRuns: readonly AnalysisRun[],
+  options: AnalysisExecutionOptions,
+): AnalysisRun {
+  if (results.length === 0) throw new Error('Aucune fenêtre analytique exploitable.')
+  if (results.some((result) => result.activityType !== session.activityType)) throw new Error('Une fenêtre analytique ne correspond pas à l’activité de la Session.')
+  return createAnalysisRun(session, combineAnalysisResults(session, results), profile, previousRuns, options)
+}
+
+function createAnalysisRun(
+  session: Session,
+  result: AnalysisResult,
+  profile: AnalysisProfile,
+  previousRuns: readonly AnalysisRun[],
+  options: AnalysisExecutionOptions,
+  dataset?: PipelineDataset,
+): AnalysisRun {
   const rawInputs = session.rawDataReferences
     .map((reference) => ({ sha256: reference.sha256, byteLength: reference.byteLength, mediaType: reference.mediaType, sourceId: reference.sourceId }))
     .toSorted((left, right) => left.sha256.localeCompare(right.sha256) || left.sourceId.localeCompare(right.sourceId))
-  const channelInputs = rawInputs.length > 0 ? undefined : [...dataset.channels.entries()].map(([channel, series]) => ({
+  const channelInputs = rawInputs.length > 0 || dataset === undefined ? undefined : [...dataset.channels.entries()].map(([channel, series]) => ({
     channel,
     fingerprint: deterministicHashSequence(series.samples),
   }))
   const inputFingerprint = deterministicHash({
-    participantId: dataset.participantId,
-    sessionId: dataset.sessionId,
+    participantId: session.participantId,
+    sessionId: session.id,
     rawInputs,
     ...(channelInputs === undefined ? {} : { channelInputs }),
     analysisVersion: options.analysisVersion,
@@ -604,6 +645,146 @@ export function executeAnalysis(
     result,
     inputFingerprint,
   }
+}
+
+export function combineAnalysisResults(session: Session, results: readonly AnalysisResult[]): AnalysisResult {
+  if (results.length === 0) throw new Error('Aucun résultat à combiner.')
+  const metricIds = [...new Set(results.flatMap((result) => result.metrics.map((metric) => metric.id)))]
+  const metrics = metricIds.map((metricId) => combineMetric(metricId, results))
+  const values = new Map(metrics.filter((metric) => metric.status === 'AVAILABLE').map((metric) => [metric.id, metric.value ?? 0]))
+  const duration = session.endTime === undefined ? values.get('duration') : Math.max(0, (Date.parse(session.endTime) - Date.parse(session.startTime)) / 1_000)
+  if (duration !== undefined) replaceMetricValue(metrics, 'duration', duration)
+  const distance = values.get('distance')
+  const moving = values.get('moving.time')
+  const gain = values.get('elevation.gain')
+  const loss = values.get('elevation.loss')
+  if (distance !== undefined && distance > 0) {
+    if (duration !== undefined) replaceMetricValue(metrics, 'pace.mean', duration / (distance / 1_000))
+    if (moving !== undefined) replaceMetricValue(metrics, 'pace.moving', moving / (distance / 1_000))
+    if (gain !== undefined && loss !== undefined) replaceMetricValue(metrics, 'slope.mean', ((gain - loss) / distance) * 100)
+    replaceMetricValue(metrics, 'splits.kilometerCount', Math.floor(distance / 1_000))
+  }
+  if (distance !== undefined && loss !== undefined && loss > 0) replaceMetricValue(metrics, 'groundGlideRatio', distance / loss)
+  const weights = results.map((result) => metricValue(result, 'duration') ?? 1)
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
+  const weightedQuality = (key: keyof SessionQuality): number => results.reduce((sum, result, index) => sum + result.quality[key] * (weights[index] ?? 1), 0) / Math.max(1, totalWeight)
+  const quality: SessionQuality = {
+    gnss: weightedQuality('gnss'),
+    imu: weightedQuality('imu'),
+    clock: weightedQuality('clock'),
+    calibration: weightedQuality('calibration'),
+    coverage: weightedQuality('coverage'),
+    fusion: weightedQuality('fusion'),
+    confidence: weightedQuality('confidence'),
+  }
+  const visualizationSeries: Record<string, number[]> = {}
+  results.forEach((result) => Object.entries(result.visualizationSeries).forEach(([channel, series]) => {
+    visualizationSeries[channel] = decimate([...(visualizationSeries[channel] ?? []), ...series], 2_000)
+  }))
+  Object.keys(visualizationSeries).forEach((channel) => { visualizationSeries[channel] = decimate(visualizationSeries[channel] ?? [], 500) })
+  const routePreview = decimate(results.flatMap((result) => result.routePreview), 1_000)
+  const events = combineEvents(results.flatMap((result) => result.events))
+  replaceAvailableMetricValue(metrics, 'acceleration.events', events.filter((event) => event.type === 'ACCELERATION').length)
+  replaceAvailableMetricValue(metrics, 'braking.events', events.filter((event) => event.type === 'BRAKING').length)
+  replaceAvailableMetricValue(metrics, 'impact.count', events.filter((event) => event.type === 'IMPACT').length)
+  replaceAvailableMetricValue(metrics, 'thermal.count', events.filter((event) => event.type === 'THERMAL').length)
+  const warnings = [...new Set(results.flatMap((result) => result.warnings))]
+  if (results.length > 1) warnings.push(`Analyse séquentielle de ${results.length} fenêtres bornées ; RAW original intégral conservé.`)
+  return {
+    activityType: results[0]?.activityType ?? session.activityType,
+    metrics,
+    events,
+    quality,
+    warnings,
+    visualizationSeries,
+    routePreview,
+  }
+}
+
+const ADDITIVE_METRICS = new Set([
+  'duration', 'distance', 'elevation.gain', 'elevation.loss', 'moving.time', 'pause.time', 'ascending.time', 'descending.time',
+  'lean.duration', 'thermal.gain', 'thermal.count', 'impact.count', 'acceleration.events', 'braking.events', 'slowdown.events',
+])
+
+function combineMetric(metricId: string, results: readonly AnalysisResult[]): AnalysisMetric {
+  const candidates = results.map((result) => result.metrics.find((metric) => metric.id === metricId)).filter((metric): metric is AnalysisMetric => metric !== undefined)
+  const available = candidates.filter((metric) => metric.status === 'AVAILABLE' && metric.value !== undefined)
+  const template = candidates[0]
+  if (template === undefined) throw new Error(`Métrique ${metricId} absente des fenêtres.`)
+  if (available.length === 0) return { ...template, sampleCount: candidates.reduce((sum, metric) => sum + metric.sampleCount, 0) }
+  const sampleCount = available.reduce((sum, metric) => sum + metric.sampleCount, 0)
+  const weights = available.map((metric) => Math.max(1, metric.sampleCount))
+  let value: number
+  if (ADDITIVE_METRICS.has(metricId)) value = available.reduce((sum, metric) => sum + (metric.value ?? 0), 0)
+  else if (metricId.endsWith('.minimum')) value = available.reduce((minimum, metric) => Math.min(minimum, metric.value ?? minimum), Number.POSITIVE_INFINITY)
+  else if (metricId === 'altitude.maximum' || metricId === 'vario.maximum') value = available.reduce((maximum, metric) => Math.max(maximum, metric.value ?? maximum), Number.NEGATIVE_INFINITY)
+  else value = weightedMean(available.map((metric) => metric.value ?? 0), weights)
+  return {
+    ...template,
+    status: 'AVAILABLE',
+    value,
+    sampleCount,
+    confidence: weightedMean(available.map((metric) => metric.confidence), weights),
+    provenance: uniqueMetricProvenance(available.flatMap((metric) => metric.provenance)),
+    ...(available.some((metric) => metric.statistics !== undefined) ? { statistics: combineStatistics(available.flatMap((metric) => metric.statistics ?? [])) } : {}),
+  }
+}
+
+function combineStatistics(values: readonly MetricStatistics[]): MetricStatistics {
+  const count = values.reduce((sum, value) => sum + value.count, 0)
+  const mean = values.reduce((sum, value) => sum + value.mean * value.count, 0) / Math.max(1, count)
+  const secondMoment = values.reduce((sum, value) => sum + (value.variance + value.mean ** 2) * value.count, 0) / Math.max(1, count)
+  const rms = Math.sqrt(values.reduce((sum, value) => sum + value.rms ** 2 * value.count, 0) / Math.max(1, count))
+  const weights = values.map((value) => value.count)
+  const variance = Math.max(0, secondMoment - mean ** 2)
+  return {
+    count,
+    minimum: values.reduce((minimum, value) => Math.min(minimum, value.minimum), Number.POSITIVE_INFINITY),
+    maximum: values.reduce((maximum, value) => Math.max(maximum, value.maximum), Number.NEGATIVE_INFINITY),
+    mean,
+    median: weightedMean(values.map((value) => value.median), weights),
+    p50: weightedMean(values.map((value) => value.p50), weights),
+    p90: weightedMean(values.map((value) => value.p90), weights),
+    p95: weightedMean(values.map((value) => value.p95), weights),
+    p99: weightedMean(values.map((value) => value.p99), weights),
+    rms,
+    variance,
+    standardDeviation: Math.sqrt(variance),
+  }
+}
+
+function weightedMean(values: readonly number[], weights: readonly number[]): number {
+  const total = weights.reduce((sum, weight) => sum + weight, 0)
+  return values.reduce((sum, value, index) => sum + value * (weights[index] ?? 1), 0) / Math.max(1, total)
+}
+
+function metricValue(result: AnalysisResult, id: string): number | undefined {
+  return result.metrics.find((metric) => metric.id === id && metric.status === 'AVAILABLE')?.value
+}
+
+function replaceMetricValue(metrics: AnalysisMetric[], id: string, value: number): void {
+  const metric = metrics.find((candidate) => candidate.id === id)
+  if (metric !== undefined) Object.assign(metric, { status: 'AVAILABLE' as const, value, sampleCount: Math.max(1, metric.sampleCount), confidence: Math.max(metric.confidence, 0.5) })
+}
+
+function replaceAvailableMetricValue(metrics: AnalysisMetric[], id: string, value: number): void {
+  if (metrics.some((metric) => metric.id === id && metric.status === 'AVAILABLE')) replaceMetricValue(metrics, id, value)
+}
+
+function uniqueMetricProvenance(values: readonly MetricProvenance[]): MetricProvenance[] {
+  return values.filter((item, index) => values.findIndex((candidate) => candidate.sourceId === item.sourceId && candidate.channel === item.channel && candidate.method === item.method) === index)
+}
+
+function combineEvents(values: readonly AnalysisEvent[]): AnalysisEvent[] {
+  const ordered = values.toSorted((left, right) => left.startTime - right.startTime || left.type.localeCompare(right.type))
+  const result: AnalysisEvent[] = []
+  ordered.forEach((event) => {
+    const previous = result.at(-1)
+    if (previous?.type === event.type && event.startTime - previous.endTime <= 1_000) {
+      result[result.length - 1] = { ...previous, endTime: Math.max(previous.endTime, event.endTime), severity: Math.max(previous.severity ?? 0, event.severity ?? 0) }
+    } else if (!result.some((candidate) => candidate.id === event.id)) result.push(event)
+  })
+  return result
 }
 
 export function attachAnalysisRun(session: Session, run: AnalysisRun): Session {

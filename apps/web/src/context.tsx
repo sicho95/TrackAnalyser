@@ -7,6 +7,7 @@ import {
   createAutomaticRouteSegmentProfile,
   detectRecurringRouteSegments,
   deriveDataset,
+  executeBatchedAnalysis,
   executeAnalysis,
   transitionDataset,
   validateImportTarget,
@@ -14,6 +15,7 @@ import {
   type ActivityGroup,
   type ActivityType,
   type AnalysisRun,
+  type AnalysisResult,
   type AnalysisProfile,
   type AppSettings,
   type Equipment,
@@ -329,10 +331,8 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
       rawDataReferences: [...baseSession.rawDataReferences, reference],
       sourceIds: [...new Set([...baseSession.sourceIds, ...result.samples.map((sample) => sample.sourceId)])],
     }
-    const { replayRawSamples } = await import('./reanalysis')
-    const combinedSamples = await replayRawSamples(sessionWithRaw.rawDataReferences, rawStore)
     const previousRuns = analysisRuns.filter((run) => run.sessionId === sessionWithRaw.id)
-    const run = analyzeSession(sessionWithRaw, combinedSamples, previousRuns, DEFAULT_ANALYSIS_PROFILES[sessionWithRaw.activityType])
+    const run = await analyzeSessionFromRaw(sessionWithRaw, rawStore, previousRuns, DEFAULT_ANALYSIS_PROFILES[sessionWithRaw.activityType])
     await repositories.analysisRuns.put(run)
     const finalSession = { ...attachAnalysisRun(sessionWithRaw, run), analysisStatus: 'COMPLETED' as const, analysisAttemptVersion: __ANALYSIS_VERSION__ }
     delete finalSession.analysisError
@@ -375,10 +375,7 @@ export function AppDataProvider({ children }: { children: ReactNode }): ReactNod
     delete running.analysisError
     await repositories.sessions.put(running)
     try {
-      const { replayRawSamples } = await import('./reanalysis')
-      const samples = await replayRawSamples(running.rawDataReferences, new ProgressiveRawStore())
-      if (samples.length === 0) throw new Error('Les RAW ne contiennent aucune mesure rejouable.')
-      const candidate = analyzeSession(running, samples, previousRuns, profile)
+      const candidate = await analyzeSessionFromRaw(running, new ProgressiveRawStore(), previousRuns, profile)
       const run = previousRuns.find((existing) => existing.id === candidate.id) ?? candidate
       if (!previousRuns.some((existing) => existing.id === run.id)) await repositories.analysisRuns.put(run)
       const completed = { ...attachAnalysisRun(running, run), analysisStatus: 'COMPLETED' as const }
@@ -474,12 +471,9 @@ async function analyzeStoredSession(repositories: LocalRepositories, sessionId: 
   await repositories.sessions.put(running)
   try {
     // Rejouer le RAW complet après sa sauvegarde afin que la fenêtre courte de l'interface ne tronque jamais l'analyse finale.
-    const { replayRawSamples } = await import('./reanalysis')
     const rawStore = new ProgressiveRawStore()
-    const samples = await replayRawSamples(running.rawDataReferences, rawStore)
-    if (samples.length === 0) throw new Error('Le RAW sauvegardé ne contient aucune mesure rejouable.')
     const previousRuns = (await repositories.analysisRuns.list()).filter((run) => run.sessionId === running.id)
-    const candidate = analyzeSession(running, samples, previousRuns, DEFAULT_ANALYSIS_PROFILES[running.activityType])
+    const candidate = await analyzeSessionFromRaw(running, rawStore, previousRuns, DEFAULT_ANALYSIS_PROFILES[running.activityType])
     const run = previousRuns.find((existingRun) => existingRun.id === candidate.id) ?? candidate
     if (!previousRuns.some((existingRun) => existingRun.id === run.id)) await repositories.analysisRuns.put(run)
     const completed = { ...attachAnalysisRun(running, run), analysisStatus: 'COMPLETED' as const }
@@ -546,6 +540,25 @@ function analyzeSession(
   dataset = new DataFusionEngine(__ANALYSIS_VERSION__).fuse(dataset, []).dataset
   dataset = deriveDataset(dataset)
   return executeAnalysis(session, dataset, profile, previousRuns, {
+    analysisVersion: __ANALYSIS_VERSION__,
+    engineBuildId: __BUILD_ID__,
+    gitCommit: __GIT_COMMIT__,
+  })
+}
+
+async function analyzeSessionFromRaw(
+  session: Session,
+  rawStore: ProgressiveRawStore,
+  previousRuns: readonly AnalysisRun[],
+  profile: (typeof DEFAULT_ANALYSIS_PROFILES)[ActivityType],
+): Promise<AnalysisRun> {
+  const { iterateAnalysisSampleBatches } = await import('./reanalysis')
+  const results: AnalysisResult[] = []
+  for await (const samples of iterateAnalysisSampleBatches(session.rawDataReferences, rawStore)) {
+    results.push(analyzeSession(session, samples, [], profile).result)
+  }
+  if (results.length === 0) throw new Error('Le RAW sauvegardé ne contient aucune mesure rejouable.')
+  return executeBatchedAnalysis(session, results, profile, previousRuns, {
     analysisVersion: __ANALYSIS_VERSION__,
     engineBuildId: __BUILD_ID__,
     gitCommit: __GIT_COMMIT__,
