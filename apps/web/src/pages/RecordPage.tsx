@@ -6,7 +6,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAppData } from '../context'
 import { messages } from '../i18n'
 import { toDisplaySeries } from '../measurements'
-import { useScreenWakeLock } from '../wake-lock'
 
 const LIVE_CHANNELS: Readonly<Record<string, MetricChannel[]>> = {
   CAR: ['speed', 'longitudinalAcceleration', 'lateralAcceleration'],
@@ -21,10 +20,9 @@ const METRIC_LABELS: Partial<Record<MetricChannel, string>> = messages.metric
 
 export function RecordPage(): ReactNode {
   const { id } = useParams()
-  const { activeSession, liveSamples, acquisitionStatus, acquisitionErrors, stopSession } = useAppData()
+  const { activeSession, liveSamples, acquisitionStatus, acquisitionErrors, wakeLockState, stopSession } = useAppData()
   const navigate = useNavigate()
   const [stopping, setStopping] = useState(false)
-  const wakeLockState = useScreenWakeLock(activeSession !== undefined)
   const elapsed = activeSession === undefined ? 0 : Math.max(0, (Date.now() - Date.parse(activeSession.startTime)) / 1000)
   const channels = LIVE_CHANNELS[activeSession?.activityType ?? ''] ?? ['speed', 'acceleration', 'altitude']
   const grouped = useMemo(() => Map.groupBy(liveSamples, (sample) => sample.channel), [liveSamples])
@@ -47,7 +45,7 @@ export function RecordPage(): ReactNode {
 
   return (
     <div className="record-screen">
-      <header className="record-header"><div><span className="record-dot" />{acquisitionStatus}</div><strong>{Math.floor(elapsed / 60).toString().padStart(2, '0')}:{Math.floor(elapsed % 60).toString().padStart(2, '0')}</strong><div className="record-header-icons"><LocateFixed size={19} aria-hidden="true" /><span className={wakeLockState === 'ACTIVE' ? 'wake-lock-active' : 'wake-lock-inactive'} title={messages.record.wakeLock[wakeLockState]}><SunMedium size={19} aria-hidden="true" /><span className="visually-hidden">{messages.record.wakeLock[wakeLockState]}</span></span></div></header>
+      <header className="record-header"><div><span className="record-dot" />{acquisitionStatus}</div><strong>{Math.floor(elapsed / 60).toString().padStart(2, '0')}:{Math.floor(elapsed % 60).toString().padStart(2, '0')}</strong><div className="record-header-icons"><LocateFixed size={19} aria-hidden="true" /><span className={wakeLockState === 'ACTIVE' || wakeLockState === 'COMPATIBILITY' ? 'wake-lock-active' : 'wake-lock-inactive'} title={messages.record.wakeLock[wakeLockState]} aria-label={messages.record.wakeLock[wakeLockState]}><SunMedium size={19} aria-hidden="true" /></span></div></header>
       <div className="live-grid">
         {channels.map((channel) => {
           const values = grouped.get(channel)?.flatMap((sample) => typeof sample.value === 'number' ? [sample.value] : []) ?? []
@@ -61,7 +59,7 @@ export function RecordPage(): ReactNode {
           return <section className="live-card" key={channel}><p>{label}</p><div className="live-card-value">{value === undefined ? <div className="live-unavailable">{waiting}</div> : spec.preferredLiveView === 'DIVERGING_GAUGE' ? <Gauge value={value} minimum={spec.scalePolicy.minimum ?? -10} maximum={spec.scalePolicy.maximum ?? 10} label={label} unit={displayed.unit} signed /> : <div className="live-reading"><strong>{value.toFixed(1)} <small>{displayed.unit}</small></strong><Sparkline values={displayed.values} label={`${messages.record.history} ${label}`} scalePolicy={spec.scalePolicy} /></div>}</div></section>
         })}
       </div>
-      <div className="source-diagnostics" aria-label={messages.record.sourceDiagnostics}><span className={locationObserved ? 'source-ok' : ''}>GPS · {locationObserved ? messages.record.observed : messages.record.waiting}</span><span className={motionObserved ? 'source-ok' : motionError === undefined ? '' : 'source-error'}>Mouvement · {motionObserved ? messages.record.observed : motionError === undefined ? messages.record.authorizedWaiting : messages.record.refused}</span></div>
+      <div className="source-diagnostics" aria-label={messages.record.sourceDiagnostics}><span className={locationObserved ? 'source-ok' : ''}>GPS · {locationObserved ? messages.record.observed : messages.record.waiting}</span><span className={motionObserved ? 'source-ok' : motionError === undefined ? '' : 'source-error'}>Mouvement · {motionObserved ? messages.record.observed : motionError === undefined ? messages.record.authorizedWaiting : messages.record.refused}</span><span className={wakeLockState === 'ACTIVE' || wakeLockState === 'COMPATIBILITY' ? 'source-ok source-wide' : 'source-error source-wide'}>{messages.record.wakeLock[wakeLockState]}</span></div>
       <div className="record-quality"><span>{liveSamples.length} {messages.record.recentSamples}</span><span>{messages.record.progressiveWrite}</span></div>
       <button className="stop-button" type="button" disabled={stopping} onClick={() => void stop()}><CircleStop size={24} aria-hidden="true" />{stopping ? messages.record.finalizing : messages.record.stop}</button>
     </div>

@@ -75,6 +75,7 @@ export function HomePage(): ReactNode {
       }, 100)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
+      await cancelPreparedSession()
       setPhase('IDLE')
     }
   }

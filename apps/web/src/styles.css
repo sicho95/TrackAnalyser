@@ -130,6 +130,7 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .source-diagnostics span { padding: 9px 10px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; color: #8da2b1; font-size: .68rem; text-align: center; }
 .source-diagnostics .source-ok { color: #7ff0df; border-color: rgba(127,240,223,.24); }
 .source-diagnostics .source-error { color: #ffabb0; border-color: rgba(255,110,119,.26); }
+.source-diagnostics .source-wide { grid-column: 1 / -1; padding-block: 6px; }
 .stop-button { width: 100%; color: #fff; background: #d0484e; }
 
 html[data-recording="true"], html[data-recording="true"] body { height: 100%; overflow: hidden; overscroll-behavior: none; }
