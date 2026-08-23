@@ -1,4 +1,4 @@
-import type { RawDataReference, SensorSample, SensorSource, Session } from '@track-analyser/domain'
+import { COMPACT_RAW_MEDIA_TYPE, COMPACT_RAW_VERSION, CompactRawEncoder, type RawDataReference, type SensorSample, type SensorSource, type Session } from '@track-analyser/domain'
 import { ProgressiveRawStore, SessionCheckpointService } from '@track-analyser/storage'
 
 class AsyncChunkQueue implements AsyncIterable<Uint8Array> {
@@ -14,6 +14,10 @@ class AsyncChunkQueue implements AsyncIterable<Uint8Array> {
     this.pendingChunks.push(chunk)
     this.pendingByteLength += chunk.byteLength
     if (this.pendingByteLength >= AsyncChunkQueue.TARGET_CHUNK_SIZE) this.flushPending()
+  }
+
+  flush(): void {
+    this.flushPending()
   }
 
   close(): void {
@@ -55,12 +59,13 @@ export interface AcquisitionState {
 
 export class AcquisitionCoordinator {
   private readonly queue = new AsyncChunkQueue()
-  private readonly encoder = new TextEncoder()
+  private readonly encoder = new CompactRawEncoder()
   private readonly unsubscribe: Array<() => void> = []
   private writePromise: Promise<RawDataReference> | undefined
   private session: Session | undefined
   private checkpointSamples: SensorSample[] = []
   private checkpointPromise: Promise<void> = Promise.resolve()
+  private lastDurableFlushTimestamp = 0
   private state: AcquisitionState = { status: 'IDLE', sampleCount: 0, sourceErrors: [] }
 
   constructor(
@@ -77,15 +82,22 @@ export class AcquisitionCoordinator {
     if (session.participantId.length === 0) throw new Error('Sélectionner un participant avant l’enregistrement.')
     if (this.state.status !== 'IDLE') throw new Error('Une acquisition est déjà active.')
     const streamId = `raw-${session.id}-${crypto.randomUUID()}`
-    const recordingSession = { ...session, activeRawStreamId: streamId }
+    const recordingSession = {
+      ...session,
+      activeRawStreamId: streamId,
+      activeRawMediaType: COMPACT_RAW_MEDIA_TYPE,
+      activeRawFormatVersion: COMPACT_RAW_VERSION,
+    }
     this.session = recordingSession
     this.state = { status: 'STARTING', sampleCount: 0, sourceErrors: [] }
     await this.checkpoints.markRecording(recordingSession)
     this.writePromise = this.rawStore.write(streamId, this.queue, {
       sessionId: session.id,
       sourceId: 'phone',
-      mediaType: 'application/x-ndjson',
+      mediaType: COMPACT_RAW_MEDIA_TYPE,
+      formatVersion: COMPACT_RAW_VERSION,
     })
+    this.queue.push(this.encoder.header())
     this.sources.forEach((source) => this.unsubscribe.push(source.subscribe((sample) => this.onSample(sample))))
     try {
       const starts = await Promise.allSettled(this.sources.map((source) => source.start()))
@@ -105,17 +117,20 @@ export class AcquisitionCoordinator {
     this.state = { ...this.state, status: 'STOPPING' }
     await this.stopSources()
     await this.checkpointPromise
+    this.encoder.finish().forEach((chunk) => this.queue.push(chunk))
     this.queue.close()
     const reference = await this.writePromise
     const completedSession = { ...session, analysisStatus: 'PENDING' as const, rawDataReferences: [...session.rawDataReferences, reference] }
     delete completedSession.activeRawStreamId
+    delete completedSession.activeRawMediaType
+    delete completedSession.activeRawFormatVersion
     await this.checkpoints.complete(completedSession)
     this.state = { ...this.state, status: 'IDLE' }
     return reference
   }
 
   private onSample(sample: SensorSample): void {
-    this.queue.push(this.encoder.encode(`${JSON.stringify(sample)}\n`))
+    this.encoder.push(sample).forEach((chunk) => this.queue.push(chunk))
     this.checkpointSamples.push(sample)
     this.state = { ...this.state, sampleCount: this.state.sampleCount + 1, lastTimestamp: sample.timestamp }
     if (this.checkpointSamples.length >= 100 && this.session !== undefined) {
@@ -127,6 +142,12 @@ export class AcquisitionCoordinator {
         .catch((error: unknown) => {
           this.state = { ...this.state, sourceErrors: [...this.state.sourceErrors, `Checkpoint : ${String(error)}`] }
         })
+    }
+    // Rendre les dernières secondes récupérables même lorsque le RAW compact
+    // n'atteint pas encore la taille cible d'un chunk.
+    if (this.lastDurableFlushTimestamp === 0 || sample.timestamp - this.lastDurableFlushTimestamp >= 5_000) {
+      this.queue.flush()
+      this.lastDurableFlushTimestamp = sample.timestamp
     }
   }
 

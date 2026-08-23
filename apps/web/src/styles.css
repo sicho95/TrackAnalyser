@@ -85,6 +85,9 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .primary-button:disabled { opacity: .45; box-shadow: none; }
 .secondary-button { background: var(--surface-2); color: var(--text); }
 .form-notice, .inline-message { padding: 12px 14px; border-radius: 13px; color: var(--muted); background: var(--surface-2); line-height: 1.45; font-size: .82rem; margin: 0; }
+.storage-readiness { display: flex; align-items: center; gap: 9px; }
+.storage-readiness.ready { color: var(--accent); }
+.storage-readiness.low { color: var(--danger); }
 .error-message { color: var(--danger); margin: 0; font-size: .83rem; }
 .safety-card { display: flex; gap: 12px; padding: 16px; color: var(--muted); }
 .safety-card svg { flex: 0 0 auto; color: var(--accent); }

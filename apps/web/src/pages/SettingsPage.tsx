@@ -70,6 +70,7 @@ export function SettingsPage(): ReactNode {
           sessionId: reference.sessionId,
           sourceId: reference.sourceId,
           mediaType: reference.mediaType,
+          ...(reference.formatVersion === undefined ? {} : { formatVersion: reference.formatVersion }),
           ...(reference.importedFileName === undefined ? {} : { importedFileName: reference.importedFileName }),
         })
         if (written.sha256 !== reference.sha256) throw new Error(`Empreinte RAW invalide pour ${reference.id}.`)

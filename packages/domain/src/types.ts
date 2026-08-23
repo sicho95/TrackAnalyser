@@ -143,6 +143,7 @@ export interface RawDataReference {
   sha256: string
   chunkCount: number
   immutable: true
+  formatVersion?: number
   importedFileName?: string
   createdAt: string
 }
@@ -169,6 +170,8 @@ export interface Session {
   analysisAttemptVersion?: string
   analysisError?: string
   activeRawStreamId?: string
+  activeRawMediaType?: string
+  activeRawFormatVersion?: number
   checkpointAt?: string
   title?: string
 }

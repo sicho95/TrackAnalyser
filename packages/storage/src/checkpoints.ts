@@ -48,7 +48,8 @@ export class SessionCheckpointService {
         const reference = session.activeRawStreamId === undefined ? undefined : await this.rawStore.recoverReference(session.activeRawStreamId, {
           sessionId: session.id,
           sourceId: 'phone',
-          mediaType: 'application/x-ndjson',
+          mediaType: session.activeRawMediaType ?? 'application/x-ndjson',
+          ...(session.activeRawFormatVersion === undefined ? {} : { formatVersion: session.activeRawFormatVersion }),
         })
         if (reference === undefined) {
           await this.repositories.sessions.put({ ...withoutActiveStream(session), status: 'INTERRUPTED' })
@@ -75,5 +76,7 @@ export class SessionCheckpointService {
 function withoutActiveStream(session: Session): Session {
   const result = { ...session }
   delete result.activeRawStreamId
+  delete result.activeRawMediaType
+  delete result.activeRawFormatVersion
   return result
 }
