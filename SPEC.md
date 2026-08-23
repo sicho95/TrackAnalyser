@@ -641,7 +641,9 @@ Les nouvelles acquisitions smartphone utilisent le format binaire auto-décrit `
 
 Regrouper progressivement les enregistrements en chunks d’environ 256 Kio avant écriture OPFS/IndexedDB, tout en forçant un flush durable au plus tard toutes les cinq secondes lorsque le débit compact est inférieur à cette cible. Ne pas créer un enregistrement IndexedDB par mesure IMU. Supprimer les miroirs volumineux par lots bornés après la première analyse réussie.
 
-L’analyse finale des longues Sessions doit lire les références RAW comme des itérateurs triés et effectuer une fusion multi-source par fenêtres bornées. Une fenêtre ne dépasse pas cinq minutes ni 75 000 mesures, hors échantillons de continuité par couple source/canal. Les résultats sont combinés en un unique `AnalysisRun` : quantités additives, extrema et moments statistiques sont agrégés selon leur sémantique ; les percentiles globaux sont estimés de façon déterministe à partir des fenêtres et ce mode est signalé dans les avertissements. Le RAW intégral reste la source permettant une future réanalyse plus précise.
+L’analyse finale des longues Sessions doit lire les références RAW comme des itérateurs triés et effectuer une fusion multi-source par fenêtres bornées. Une fenêtre ne dépasse pas cinq minutes ni 75 000 mesures, hors échantillons de continuité par couple source/canal. Une interruption supérieure au seuil `maximumContinuousGapSeconds` de l’`AnalysisProfile` doit créer une frontière dure sans échantillon de continuité antérieur ; sa valeur initiale est 60 secondes et doit rester versionnée. Les résultats sont combinés en un unique `AnalysisRun` : quantités additives, extrema et moments statistiques sont agrégés selon leur sémantique ; les percentiles globaux sont estimés de façon déterministe à partir des fenêtres et ce mode est signalé dans les avertissements. Le RAW intégral reste la source permettant une future réanalyse plus précise.
+
+Ne jamais relier deux positions séparées par une telle interruption, ni compter la distance haversine, la durée dynamique, la continuité d’un événement ou un dénivelé entre ces deux points. Conserver la durée écoulée réelle de la Session, mais calculer séparément la couverture temporelle observée et réduire la confiance des métriques lorsque cette couverture est incomplète. Afficher un avertissement explicite sous 95 % de couverture. La carte doit rendre les portions continues en `MultiLineString` et ne doit jamais transformer une suspension de page en ligne droite supposée.
 
 La cible smartphone V1 est dix heures à la cadence réellement observée sur le premier appareil terrain, soit environ 50 frames DeviceMotion/s et onze canaux. Le test de capacité doit conserver tous ces canaux et maintenir le RAW V2 sous 512 Mio. Comme le miroir de récupération coexiste temporairement avec OPFS, l’accueil mesure le quota navigateur et réserve deux fois le RAW estimé plus 128 Mio de marge. Cette borne doit être recalibrée pour un futur boîtier à 200–400 Hz ; elle ne justifie jamais une perte silencieuse de données.
 
@@ -652,6 +654,8 @@ La cible smartphone V1 est dix heures à la cadence réellement observée sur le
 - fallback IndexedDB si OPFS indisponible.
 
 L’identité du flux RAW actif doit être persistée dans la Session avant la première mesure. Conserver un miroir de chunks IndexedDB même lorsqu’OPFS est disponible jusqu’au rattachement de la référence finale et à une première relecture réussie. Après interruption, reconstruire et vérifier la référence RAW depuis ces chunks, la rattacher à la même Session et rendre l’analyse reprenable. Ne jamais laisser une Session avec des chunks locaux orphelins uniquement parce que Safari a suspendu la page avant la fermeture du flux.
+
+Lors d’une erreur transitoire de lecture OPFS, notamment Safari `The I/O read operation failed.`, reprendre le flux exactement à l’octet non lu depuis le miroir IndexedDB encore disponible. Vérifier les empreintes des chunks du miroir et ne jamais dupliquer, omettre ou remplacer silencieusement des octets. Si aucun miroir vérifiable n’est disponible, conserver le RAW et signaler l’échec d’analyse sans produire de résultat partiel présenté comme complet.
 
 Ne pas stocker des heures d’IMU haute fréquence dans un gigantesque objet JSON.
 
@@ -823,6 +827,8 @@ Pour tableur, Python ou R.
 ## 25.3. GPX
 
 Export d’interopérabilité cartographique conforme à GPX 1.1. Produire une trace à partir de la source de position retenue par `DataFusionEngine` pour le canal `position`, jamais par concaténation naïve de plusieurs GPS. Conserver les coordonnées et timestamps réels, ainsi que l’altitude lorsqu’elle existe dans le point ou sur le canal `altitude` fusionné au même timestamp. Ne pas inventer une trace si aucun point GPS valide n’est disponible.
+
+Produire un `trkseg` distinct après chaque interruption supérieure au seuil de continuité versionné. Ne jamais joindre dans le GPX deux reprises de position par une ligne qui n’a pas été mesurée.
 
 GPX reste centré sur la géométrie du parcours. Les analyses, RAW, provenances complètes et canaux non cartographiques restent transportés par `.tatrip`, JSON ou CSV.
 
@@ -1608,6 +1614,8 @@ La V1 est acceptable si notamment :
 42. les imports utilisent une flèche descendante entrant dans une boîte, les exports une flèche montante sortant de cette boîte, et une Session disposant de positions réelles peut être exportée en GPX 1.1.
 43. une Session de plusieurs centaines de milliers de mesures est rejouée et analysée sans débordement de pile ; un échec d’un ancien moteur est automatiquement retenté une seule fois par nouvelle `analysisVersion`.
 44. une acquisition smartphone projetée sur dix heures conserve les onze canaux DeviceMotion sous 512 Mio en RAW V2, expose la marge de stockage avant le départ et produit une analyse unique par fenêtres de cinq minutes ou 75 000 mesures au maximum sans charger le trajet complet en mémoire.
+45. une erreur transitoire de lecture OPFS reprend à l’octet exact depuis le miroir IndexedDB et restitue un RAW strictement identique ; à défaut de miroir vérifiable, l’analyse échoue sans altérer la Session.
+46. une interruption supérieure au seuil versionné sépare la trace cartographique et les `trkseg` GPX, exclut la liaison des distances et durées dynamiques, expose la couverture temporelle et réduit la confiance sans modifier le RAW ni l’analyse originale.
 
 ---
 

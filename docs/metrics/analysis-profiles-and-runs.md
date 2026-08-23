@@ -18,6 +18,8 @@ La Session conserve aussi `analysisAttemptVersion`. Un échec explicite n’est 
 
 Le moteur 1.1.0 traite les longues Sessions par fenêtres bornées. Il combine les quantités additives, extrema, moyennes, variances et RMS selon leur sémantique à partir des résultats de fenêtres et de leurs échantillons de continuité. Les percentiles globaux sont une combinaison pondérée déterministe des percentiles locaux et sont donc signalés comme résultat d’analyse séquentielle. Les événements temporels adjacents de même type sont réunis lorsque leur continuité traverse une frontière, puis les nombres d’événements sont recalculés depuis cette chronologie réunie. Le fingerprint reste fondé sur le RAW complet, le profil et la version moteur.
 
+Le moteur 1.2.0 et les profils initiaux 1.0.1 ajoutent `maximumContinuousGapSeconds`, fixé à 60 secondes par défaut. Une coupure plus longue crée une frontière dure : aucune distance, trajectoire, durée dynamique ni continuité d’événement ne traverse cette frontière. La carte conserve plusieurs segments et le GPX produit plusieurs `trkseg`. La couverture temporelle vaut la somme des durées réellement observées divisée par la durée écoulée de la Session ; elle est exposée dans la qualité et pondère la confiance. Le profil 1.0.0 reste conservé pour reproduire les analyses existantes.
+
 ## Calibration terrain
 
 Les valeurs V1 sont des amorces documentées : seuil de mouvement, pause, freinage, accélération latérale, impact, vario, thermique et rotation. Elles nécessitent des acquisitions contrôlées sur plusieurs appareils, fixations, activités et conditions. Toute correction produit une nouvelle version du profil ; elle ne modifie jamais un run existant.

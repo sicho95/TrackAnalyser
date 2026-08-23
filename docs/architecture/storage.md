@@ -6,7 +6,7 @@ L’acquisition ne garde qu’une fenêtre récente pour l’affichage et un tam
 
 Le RAW V2 mutualise les métadonnées dans des définitions et regroupe les mesures simultanées en frames binaires. Les nombres physiques restent en `Float64`. Le replay accepte aussi le NDJSON V1, filtre les canaux et fusionne plusieurs références triées avec un seul curseur par source.
 
-Le pipeline n’utilise jamais les formes `push(...tableau)` ou `Math.max(...tableau)` sur une collection non bornée : Safari limite le nombre d’arguments bien avant la taille possible d’une Session. L’empreinte d’analyse repose sur les SHA-256 RAW. Une analyse longue lit des fenêtres de cinq minutes ou 75 000 mesures au maximum, conserve un échantillon de continuité par source/canal et libère chaque pipeline intermédiaire avant la fenêtre suivante. Les résultats partiels sont combinés par la sémantique de leurs métriques.
+Le pipeline n’utilise jamais les formes `push(...tableau)` ou `Math.max(...tableau)` sur une collection non bornée : Safari limite le nombre d’arguments bien avant la taille possible d’une Session. L’empreinte d’analyse repose sur les SHA-256 RAW. Une analyse longue lit des fenêtres de cinq minutes ou 75 000 mesures au maximum, conserve un échantillon de continuité par source/canal et libère chaque pipeline intermédiaire avant la fenêtre suivante. Une interruption supérieure au seuil versionné du profil coupe également la fenêtre sans transporter de point antérieur. Les résultats partiels sont combinés par la sémantique de leurs métriques.
 
 À l’écriture, les enregistrements sont regroupés dans des chunks cibles de 256 Kio au lieu de créer un chunk IndexedDB par mesure. Un flush maximal de cinq secondes borne la perte possible lors d’une suspension brutale. Le miroir est supprimé par lots bornés après validation. L’accueil compare le quota restant à deux copies du RAW dix heures projeté plus 128 Mio de marge.
 
@@ -15,6 +15,8 @@ Le pipeline n’utilise jamais les formes `push(...tableau)` ou `Math.max(...tab
 `ProgressiveRawStore` écrit dans OPFS lorsque `navigator.storage.getDirectory` est disponible. Le fallback stocke des chunks IndexedDB indexés par `streamId`. Chaque référence contient la taille, le nombre de chunks et le SHA-256 du flux complet.
 
 Pendant une acquisition OPFS, chaque chunk reste également miré dans IndexedDB jusqu’à ce que la référence finale soit rattachée à la Session. `activeRawStreamId` est inscrit avant la première mesure. Si le processus disparaît, `recoverReference` contrôle l’ordre et le SHA-256 de chaque chunk, reconstruit l’empreinte globale et rattache une référence `INDEXED_DB` à la Session. Le miroir OPFS n’est nettoyé en tâche différée qu’après le commit métier et une relecture réussie par l’analyse ; une suspension intermédiaire laisse donc le fallback intact.
+
+La lecture OPFS est elle-même résiliente aux erreurs transitoires Safari. Si une tranche échoue, `ProgressiveRawStore` reprend exactement à l’octet suivant depuis le miroir IndexedDB, sans répéter les octets déjà fournis au décodeur. Chaque chunk de repli est contrôlé par SHA-256. L’analyse échoue explicitement si le miroir nécessaire n’existe plus, au lieu de produire un flux tronqué ou corrompu.
 
 Les objets métier sont accessibles uniquement par `LocalRepositories`. Le schéma IndexedDB 4 ajoute un store `segments`, indexé par session et empreinte de route. Les migrations créent les stores progressivement et marquent comme interrompues les anciennes sessions incomplètes sans toucher à leurs références RAW.
 
