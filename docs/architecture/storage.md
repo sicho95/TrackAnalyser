@@ -2,9 +2,13 @@
 
 ## Chaud
 
-L’acquisition ne garde qu’une fenêtre récente pour l’affichage et un tampon de checkpoint. Le flux complet est sérialisé progressivement en NDJSON ; plusieurs heures d’IMU ne forment pas un objet JSON unique.
+L’acquisition ne garde qu’une fenêtre récente pour l’affichage et un tampon de checkpoint. Le flux complet V2 est sérialisé progressivement en frames binaires ; plusieurs heures d’IMU ne forment pas un objet JSON unique. Le NDJSON est réservé à la compatibilité des RAW V1.
 
-Le replay NDJSON accepte un filtre de canaux et ajoute les mesures de façon itérative. Le pipeline n’utilise jamais les formes `push(...tableau)` ou `Math.max(...tableau)` sur une collection non bornée : Safari limite le nombre d’arguments bien avant la taille possible d’une Session. L’empreinte d’analyse repose sur les SHA-256 RAW et les étapes intermédiaires sont remplacées successivement afin de réduire le pic mémoire. À l’écriture, les lignes sont regroupées dans des chunks cibles de 256 Kio au lieu de créer un chunk IndexedDB par mesure. Le miroir est supprimé par lots bornés après validation.
+Le RAW V2 mutualise les métadonnées dans des définitions et regroupe les mesures simultanées en frames binaires. Les nombres physiques restent en `Float64`. Le replay accepte aussi le NDJSON V1, filtre les canaux et fusionne plusieurs références triées avec un seul curseur par source.
+
+Le pipeline n’utilise jamais les formes `push(...tableau)` ou `Math.max(...tableau)` sur une collection non bornée : Safari limite le nombre d’arguments bien avant la taille possible d’une Session. L’empreinte d’analyse repose sur les SHA-256 RAW. Une analyse longue lit des fenêtres de cinq minutes ou 75 000 mesures au maximum, conserve un échantillon de continuité par source/canal et libère chaque pipeline intermédiaire avant la fenêtre suivante. Les résultats partiels sont combinés par la sémantique de leurs métriques.
+
+À l’écriture, les enregistrements sont regroupés dans des chunks cibles de 256 Kio au lieu de créer un chunk IndexedDB par mesure. Un flush maximal de cinq secondes borne la perte possible lors d’une suspension brutale. Le miroir est supprimé par lots bornés après validation. L’accueil compare le quota restant à deux copies du RAW dix heures projeté plus 128 Mio de marge.
 
 ## Tiède
 

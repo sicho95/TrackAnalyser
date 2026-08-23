@@ -23,6 +23,7 @@ Cette matrice complète `SPEC.md` sans le remplacer.
 | Gestion des sessions | icônes selon le type, métriques disponibles uniquement, façade glissable lisible sans menu redondant, exports et suppression à double confirmation |
 | Arrêt résilient | identité du flux persistée avant mesure, RAW rattaché avant retour UI, analyse différée avec états durables, récupération des chunks et reprise au lancement |
 | Grosses sessions | replay itératif au-delà de 130 000 mesures sans expansion en arguments, chunks d’acquisition d’environ 256 Kio, nettoyage par lots, empreinte fondée sur les SHA-256 RAW, analyse moteur 1.0.1 et nouvelle tentative automatique après échec d’une ancienne version |
+| Session smartphone 10 h | RAW V2 binaire auto-décrit sous 512 Mio projetés à 50 Hz et onze canaux, round-trip exact, quota affiché, flush au plus tard toutes les cinq secondes, récupération avec version de format et analyse 1.1.0 par fenêtres de cinq minutes ou 75 000 mesures |
 
 ## Validations qui restent matérielles
 
