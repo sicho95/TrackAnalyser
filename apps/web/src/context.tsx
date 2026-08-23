@@ -528,7 +528,9 @@ async function refreshAutomaticSegments(repositories: LocalRepositories): Promis
   const tracks = storedSessions.flatMap((session) => {
     const runs = storedRuns.filter((run) => run.sessionId === session.id)
     const latest = runs.find((run) => run.id === session.latestAnalysisRunId) ?? runs.toSorted((left, right) => left.createdAt.localeCompare(right.createdAt)).at(-1)
-    return latest === undefined || latest.result.routePreview.length < 2 ? [] : [{ session, points: latest.result.routePreview }]
+    if (latest === undefined) return []
+    const routeSegments = latest.result.routePreviewSegments ?? (latest.result.routePreview.length < 2 ? [] : [latest.result.routePreview])
+    return routeSegments.filter((points) => points.length >= 2).map((points) => ({ session, points }))
   })
   const detected = detectRecurringRouteSegments(tracks, createAutomaticRouteSegmentProfile(storedSettings.segmentDetection))
   await Promise.all(storedSegments.filter((segment) => !segment.manual).map((segment) => repositories.segments.delete(segment.id)))
@@ -580,7 +582,8 @@ async function analyzeSessionFromRaw(
 ): Promise<AnalysisRun> {
   const { iterateAnalysisSampleBatches } = await import('./reanalysis')
   const results: AnalysisResult[] = []
-  for await (const samples of iterateAnalysisSampleBatches(session.rawDataReferences, rawStore)) {
+  const maximumContinuityGapMs = Math.max(1, profile.parameters.maximumContinuousGapSeconds ?? 60) * 1_000
+  for await (const samples of iterateAnalysisSampleBatches(session.rawDataReferences, rawStore, { maximumContinuityGapMs })) {
     results.push(analyzeSession(session, samples, [], profile).result)
   }
   if (results.length === 0) throw new Error('Le RAW sauvegardé ne contient aucune mesure rejouable.')

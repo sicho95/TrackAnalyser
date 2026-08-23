@@ -88,7 +88,8 @@ export function exportAnalysisCsv(run: AnalysisRun): string {
   return [header.join(','), ...lines].join('\n')
 }
 
-export function exportSessionGpx(session: Session, samples: readonly SensorSample[]): string {
+export function exportSessionGpx(session: Session, samples: readonly SensorSample[], maximumContinuityGapMs = 60_000): string {
+  if (!Number.isFinite(maximumContinuityGapMs) || maximumContinuityGapMs <= 0) throw new Error('Le seuil de continuité GPX doit être positif.')
   const altitudeByTimestamp = new Map(
     samples
       .filter((sample) => sample.channel === 'altitude' && typeof sample.value === 'number' && Number.isFinite(sample.value))
@@ -101,12 +102,12 @@ export function exportSessionGpx(session: Session, samples: readonly SensorSampl
   if (points.length === 0) throw new Error('Aucun point GPS disponible pour l’export GPX.')
   const title = session.title?.trim()
   const name = xmlEscape(title === undefined || title.length === 0 ? `Session ${session.startTime}` : title)
-  const trackPoints = points.map((sample) => {
+  const trackSegments = splitContinuousSamples(points, maximumContinuityGapMs).map((segment) => segment.map((sample) => {
     const point = sample.value as { latitude: number; longitude: number; altitude?: number }
     const altitude = point.altitude === undefined || !Number.isFinite(point.altitude) ? altitudeByTimestamp.get(sample.timestamp) : point.altitude
     const elevation = altitude === undefined ? '' : `\n        <ele>${altitude}</ele>`
     return `      <trkpt lat="${point.latitude}" lon="${point.longitude}">${elevation}\n        <time>${new Date(sample.timestamp).toISOString()}</time>\n      </trkpt>`
-  }).join('\n')
+  }).join('\n')).map((trackPoints) => `    <trkseg>\n${trackPoints}\n    </trkseg>`).join('\n')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="TrackAnalyser" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 https://www.topografix.com/GPX/1/1/gpx.xsd">
@@ -117,11 +118,19 @@ export function exportSessionGpx(session: Session, samples: readonly SensorSampl
   <trk>
     <name>${name}</name>
     <type>${session.activityType}</type>
-    <trkseg>
-${trackPoints}
-    </trkseg>
+${trackSegments}
   </trk>
 </gpx>`
+}
+
+function splitContinuousSamples<T extends { timestamp: number }>(samples: readonly T[], maximumGapMs: number): T[][] {
+  const segments: T[][] = []
+  samples.forEach((sample, index) => {
+    const previous = samples[index - 1]
+    if (previous === undefined || sample.timestamp - previous.timestamp > maximumGapMs) segments.push([])
+    segments.at(-1)?.push(sample)
+  })
+  return segments
 }
 
 function isValidPosition(value: SensorSample['value']): boolean {

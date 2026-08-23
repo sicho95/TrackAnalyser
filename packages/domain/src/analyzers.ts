@@ -170,18 +170,22 @@ function totalDistanceMeters(context: AnalyzerContext): number | undefined {
   const distanceValues = context.numeric('distance')
   const distanceExtent = finiteExtent(distanceValues)
   if (distanceExtent !== undefined) return distanceExtent[1] - distanceExtent[0]
-  const positions = context.series('position')?.samples.flatMap((sample) =>
-    typeof sample.value === 'object' && !Array.isArray(sample.value) && 'latitude' in sample.value ? [sample.value as GeoPoint] : [],
-  )
+  const positions = positionSamples(context)
   if (positions === undefined || positions.length < 2) return undefined
-  return positions.slice(1).reduce((sum, point, index) => sum + haversineDistanceMeters(positions[index] ?? point, point), 0)
+  return positions.slice(1).reduce((sum, current, index) => {
+    const previous = positions[index]
+    if (previous === undefined || !isContinuousInterval(context, previous.timestamp, current.timestamp)) return sum
+    return sum + haversineDistanceMeters(previous.point, current.point)
+  }, 0)
 }
 
 function elevationChange(context: AnalyzerContext, direction: 1 | -1): number | undefined {
-  const altitudes = context.numeric('altitude')
-  if (altitudes.length < 2) return undefined
+  const altitudes = context.series('altitude')?.samples.filter((sample) => typeof sample.value === 'number')
+  if (altitudes === undefined || altitudes.length < 2) return undefined
   return altitudes.slice(1).reduce((sum, altitude, index) => {
-    const delta = altitude - (altitudes[index] ?? altitude)
+    const previous = altitudes[index]
+    if (previous === undefined || !isContinuousInterval(context, previous.timestamp, altitude.timestamp)) return sum
+    const delta = Number(altitude.value) - Number(previous.value)
     return direction === 1 ? sum + Math.max(0, delta) : sum + Math.max(0, -delta)
   }, 0)
 }
@@ -207,7 +211,7 @@ function movingTimeSeconds(context: AnalyzerContext): number | undefined {
   const threshold = context.profile.parameters.movingSpeedThresholdMps ?? 0.6
   return samples.slice(1).reduce((duration, sample, index) => {
     const previous = samples[index]
-    return previous !== undefined && Number(sample.value) >= threshold ? duration + (sample.timestamp - previous.timestamp) / 1000 : duration
+    return previous !== undefined && Number(sample.value) >= threshold && isContinuousInterval(context, previous.timestamp, sample.timestamp) ? duration + (sample.timestamp - previous.timestamp) / 1000 : duration
   }, 0)
 }
 
@@ -241,7 +245,7 @@ function thermalGain(context: AnalyzerContext): number | undefined {
   return samples.slice(1).reduce((gain, sample, index) => {
     const previous = samples[index]
     const speed = Number(sample.value)
-    return previous !== undefined && speed >= threshold ? gain + speed * ((sample.timestamp - previous.timestamp) / 1000) : gain
+    return previous !== undefined && speed >= threshold && isContinuousInterval(context, previous.timestamp, sample.timestamp) ? gain + speed * ((sample.timestamp - previous.timestamp) / 1000) : gain
   }, 0)
 }
 
@@ -269,7 +273,7 @@ function durationBeyond(context: AnalyzerContext, channel: MetricChannel, absolu
   if (samples === undefined || samples.length < 2) return undefined
   return samples.slice(1).reduce((sum, sample, index) => {
     const previous = samples[index]
-    return previous !== undefined && Math.abs(Number(sample.value)) >= absoluteThreshold ? sum + (sample.timestamp - previous.timestamp) / 1000 : sum
+    return previous !== undefined && Math.abs(Number(sample.value)) >= absoluteThreshold && isContinuousInterval(context, previous.timestamp, sample.timestamp) ? sum + (sample.timestamp - previous.timestamp) / 1000 : sum
   }, 0)
 }
 
@@ -326,8 +330,36 @@ function signedVerticalDuration(context: AnalyzerContext, direction: 1 | -1): nu
   return samples.slice(1).reduce((sum, sample, index) => {
     const previous = samples[index]
     const qualifies = direction === 1 ? Number(sample.value) >= threshold : Number(sample.value) <= threshold
-    return previous !== undefined && qualifies ? sum + (sample.timestamp - previous.timestamp) / 1000 : sum
+    return previous !== undefined && qualifies && isContinuousInterval(context, previous.timestamp, sample.timestamp) ? sum + (sample.timestamp - previous.timestamp) / 1000 : sum
   }, 0)
+}
+
+function maximumContinuityGapMs(context: AnalyzerContext): number {
+  return Math.max(1, context.profile.parameters.maximumContinuousGapSeconds ?? 60) * 1_000
+}
+
+function isContinuousInterval(context: AnalyzerContext, previousTimestamp: number, currentTimestamp: number): boolean {
+  const interval = currentTimestamp - previousTimestamp
+  return interval > 0 && interval <= maximumContinuityGapMs(context)
+}
+
+function positionSamples(context: AnalyzerContext): Array<{ timestamp: number; point: GeoPoint }> | undefined {
+  return context.series('position')?.samples.flatMap((sample) =>
+    typeof sample.value === 'object' && !Array.isArray(sample.value) && 'latitude' in sample.value
+      ? [{ timestamp: sample.timestamp, point: sample.value as GeoPoint }]
+      : [],
+  )
+}
+
+function routeSegments(context: AnalyzerContext): GeoPoint[][] {
+  const positions = positionSamples(context) ?? []
+  const segments: GeoPoint[][] = []
+  positions.forEach((position, index) => {
+    const previous = positions[index - 1]
+    if (previous === undefined || !isContinuousInterval(context, previous.timestamp, position.timestamp)) segments.push([])
+    segments.at(-1)?.push(position.point)
+  })
+  return decimateRouteSegments(segments.filter((segment) => segment.length >= 2), 1_000)
 }
 
 function uniqueProvenance(series: ChannelSeries | undefined): MetricProvenance[] {
@@ -530,6 +562,7 @@ class ConfiguredAnalyzer implements ActivityAnalyzer {
       series: (channel) => dataset.channels.get(channel),
     }
     const definitions = [...COMMON_METRICS, ...ACTIVITY_METRICS[this.activityType]]
+    const previewSegments = routeSegments(context)
     return {
       activityType: this.activityType,
       metrics: definitions.map((definition) => metricFromDefinition(definition, context)),
@@ -541,12 +574,8 @@ class ConfiguredAnalyzer implements ActivityAnalyzer {
           .map(([channel, series]) => [channel, decimate(numericValues(series), 500)] as const)
           .filter(([, values]) => values.length > 0),
       ),
-      routePreview: decimate(
-        dataset.channels.get('position')?.samples.flatMap((sample) =>
-          typeof sample.value === 'object' && !Array.isArray(sample.value) && 'latitude' in sample.value ? [sample.value as GeoPoint] : [],
-        ) ?? [],
-        1_000,
-      ),
+      routePreview: previewSegments.flat(),
+      routePreviewSegments: previewSegments,
     }
   }
 }
@@ -557,6 +586,12 @@ function decimate<T>(values: readonly T[], maximum: number): T[] {
   return Array.from({ length: maximum }, (_, index) => values[Math.min(values.length - 1, Math.floor(index * step))]).filter(
     (value): value is T => value !== undefined,
   )
+}
+
+function decimateRouteSegments(segments: readonly (readonly GeoPoint[])[], maximum: number): GeoPoint[][] {
+  const total = segments.reduce((sum, segment) => sum + segment.length, 0)
+  if (total <= maximum) return segments.map((segment) => [...segment])
+  return segments.map((segment) => decimate(segment, Math.max(2, Math.floor(maximum * segment.length / total))))
 }
 
 export const ACTIVITY_ANALYZERS: Readonly<Record<ActivityType, ActivityAnalyzer>> = {
@@ -652,37 +687,41 @@ export function combineAnalysisResults(session: Session, results: readonly Analy
   const metricIds = [...new Set(results.flatMap((result) => result.metrics.map((metric) => metric.id)))]
   const metrics = metricIds.map((metricId) => combineMetric(metricId, results))
   const values = new Map(metrics.filter((metric) => metric.status === 'AVAILABLE').map((metric) => [metric.id, metric.value ?? 0]))
-  const duration = session.endTime === undefined ? values.get('duration') : Math.max(0, (Date.parse(session.endTime) - Date.parse(session.startTime)) / 1_000)
-  if (duration !== undefined) replaceMetricValue(metrics, 'duration', duration)
+  const weights = results.map((result) => metricValue(result, 'duration') ?? 1)
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
+  const elapsedDuration = session.endTime === undefined ? values.get('duration') : Math.max(0, (Date.parse(session.endTime) - Date.parse(session.startTime)) / 1_000)
+  if (elapsedDuration !== undefined) replaceMetricValue(metrics, 'duration', elapsedDuration)
   const distance = values.get('distance')
   const moving = values.get('moving.time')
   const gain = values.get('elevation.gain')
   const loss = values.get('elevation.loss')
   if (distance !== undefined && distance > 0) {
-    if (duration !== undefined) replaceMetricValue(metrics, 'pace.mean', duration / (distance / 1_000))
+    replaceMetricValue(metrics, 'pace.mean', totalWeight / (distance / 1_000))
     if (moving !== undefined) replaceMetricValue(metrics, 'pace.moving', moving / (distance / 1_000))
     if (gain !== undefined && loss !== undefined) replaceMetricValue(metrics, 'slope.mean', ((gain - loss) / distance) * 100)
     replaceMetricValue(metrics, 'splits.kilometerCount', Math.floor(distance / 1_000))
   }
   if (distance !== undefined && loss !== undefined && loss > 0) replaceMetricValue(metrics, 'groundGlideRatio', distance / loss)
-  const weights = results.map((result) => metricValue(result, 'duration') ?? 1)
-  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
+  const temporalCoverage = elapsedDuration === undefined || elapsedDuration <= 0 ? 1 : Math.min(1, totalWeight / elapsedDuration)
   const weightedQuality = (key: keyof SessionQuality): number => results.reduce((sum, result, index) => sum + result.quality[key] * (weights[index] ?? 1), 0) / Math.max(1, totalWeight)
   const quality: SessionQuality = {
     gnss: weightedQuality('gnss'),
     imu: weightedQuality('imu'),
     clock: weightedQuality('clock'),
     calibration: weightedQuality('calibration'),
-    coverage: weightedQuality('coverage'),
+    coverage: temporalCoverage,
     fusion: weightedQuality('fusion'),
-    confidence: weightedQuality('confidence'),
+    confidence: 0,
   }
+  quality.confidence = (quality.gnss + quality.imu + quality.clock + quality.calibration + quality.coverage + quality.fusion) / 6
+  metrics.forEach((metric) => { metric.confidence *= temporalCoverage })
   const visualizationSeries: Record<string, number[]> = {}
   results.forEach((result) => Object.entries(result.visualizationSeries).forEach(([channel, series]) => {
     visualizationSeries[channel] = decimate([...(visualizationSeries[channel] ?? []), ...series], 2_000)
   }))
   Object.keys(visualizationSeries).forEach((channel) => { visualizationSeries[channel] = decimate(visualizationSeries[channel] ?? [], 500) })
-  const routePreview = decimate(results.flatMap((result) => result.routePreview), 1_000)
+  const routePreviewSegments = decimateRouteSegments(results.flatMap((result) => result.routePreviewSegments ?? (result.routePreview.length === 0 ? [] : [result.routePreview])), 1_000)
+  const routePreview = routePreviewSegments.flat()
   const events = combineEvents(results.flatMap((result) => result.events))
   replaceAvailableMetricValue(metrics, 'acceleration.events', events.filter((event) => event.type === 'ACCELERATION').length)
   replaceAvailableMetricValue(metrics, 'braking.events', events.filter((event) => event.type === 'BRAKING').length)
@@ -690,6 +729,7 @@ export function combineAnalysisResults(session: Session, results: readonly Analy
   replaceAvailableMetricValue(metrics, 'thermal.count', events.filter((event) => event.type === 'THERMAL').length)
   const warnings = [...new Set(results.flatMap((result) => result.warnings))]
   if (results.length > 1) warnings.push(`Analyse séquentielle de ${results.length} fenêtres bornées ; RAW original intégral conservé.`)
+  if (temporalCoverage < 0.95) warnings.push(`Couverture temporelle ${(temporalCoverage * 100).toFixed(1)} % : les interruptions sans mesure sont exclues des distances, trajectoires et durées dynamiques.`)
   return {
     activityType: results[0]?.activityType ?? session.activityType,
     metrics,
@@ -698,6 +738,7 @@ export function combineAnalysisResults(session: Session, results: readonly Analy
     warnings,
     visualizationSeries,
     routePreview,
+    routePreviewSegments,
   }
 }
 

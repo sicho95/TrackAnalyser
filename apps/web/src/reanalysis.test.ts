@@ -100,4 +100,27 @@ describe('rejeu des RAW', () => {
     expect(sizes.length).toBeGreaterThanOrEqual(5)
     expect(Math.max(...sizes)).toBeLessThanOrEqual(1_001)
   })
+
+  it('coupe une interruption de capteurs sans transporter les derniers points avant suspension', async () => {
+    const reader: RawReader = {
+      async *read(): AsyncGenerator<Uint8Array> {
+        const encoder = new CompactRawEncoder()
+        const base = samples[0]
+        if (base === undefined) return
+        yield encoder.header()
+        for (const timestamp of [1_000, 2_000, 10 * 60_000, 10 * 60_000 + 1_000]) {
+          for (const chunk of encoder.push({ ...base, timestamp })) yield chunk
+        }
+        for (const chunk of encoder.finish()) yield chunk
+      },
+    }
+    const compactReference = { ...reference, mediaType: COMPACT_RAW_MEDIA_TYPE, formatVersion: 2 }
+    const batches: SensorSample[][] = []
+
+    for await (const batch of iterateAnalysisSampleBatches([compactReference], reader, { maximumContinuityGapMs: 60_000 })) batches.push(batch)
+
+    expect(batches).toHaveLength(2)
+    expect(batches[0]?.map((sample) => sample.timestamp)).toEqual([1_000, 2_000])
+    expect(batches[1]?.map((sample) => sample.timestamp)).toEqual([10 * 60_000, 10 * 60_000 + 1_000])
+  })
 })

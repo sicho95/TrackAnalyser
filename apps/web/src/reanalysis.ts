@@ -9,10 +9,12 @@ export interface RawReader {
 export interface AnalysisBatchOptions {
   maximumDurationMs?: number
   maximumSamples?: number
+  maximumContinuityGapMs?: number
 }
 
 export const DEFAULT_ANALYSIS_BATCH_DURATION_MS = 5 * 60 * 1_000
 export const DEFAULT_ANALYSIS_BATCH_SAMPLES = 75_000
+export const DEFAULT_ANALYSIS_CONTINUITY_GAP_MS = 60_000
 
 export async function replayRawSamples(
   references: readonly RawDataReference[],
@@ -65,18 +67,21 @@ export async function* iterateAnalysisSampleBatches(
 ): AsyncGenerator<SensorSample[]> {
   const maximumDurationMs = options.maximumDurationMs ?? DEFAULT_ANALYSIS_BATCH_DURATION_MS
   const maximumSamples = options.maximumSamples ?? DEFAULT_ANALYSIS_BATCH_SAMPLES
-  if (maximumDurationMs <= 0 || maximumSamples <= 0) throw new Error('Les bornes de fenêtre analytique doivent être positives.')
+  const maximumContinuityGapMs = options.maximumContinuityGapMs ?? DEFAULT_ANALYSIS_CONTINUITY_GAP_MS
+  if (maximumDurationMs <= 0 || maximumSamples <= 0 || maximumContinuityGapMs <= 0) throw new Error('Les bornes de fenêtre analytique doivent être positives.')
   let batch: SensorSample[] = []
   let batchStart = 0
   let previousTimestamp: number | undefined
   const carry = new Map<string, SensorSample>()
   for await (const sample of iterateRawSamples(references, reader)) {
+    const discontinuity = previousTimestamp !== undefined && sample.timestamp - previousTimestamp > maximumContinuityGapMs
     const boundary = batch.length > 0
       && previousTimestamp !== sample.timestamp
-      && (sample.timestamp - batchStart >= maximumDurationMs || batch.length >= maximumSamples)
+      && (discontinuity || sample.timestamp - batchStart >= maximumDurationMs || batch.length >= maximumSamples)
     if (boundary) {
       yield batch
-      batch = [...carry.values()].toSorted(compareSamples)
+      batch = discontinuity ? [] : [...carry.values()].toSorted(compareSamples)
+      if (discontinuity) carry.clear()
       batchStart = sample.timestamp
     }
     if (batch.length === 0) batchStart = sample.timestamp

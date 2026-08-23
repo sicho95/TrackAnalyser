@@ -13,6 +13,7 @@ const COMMON_PARAMETERS: Readonly<Record<string, number>> = {
   sinkThresholdMps: -0.5,
   thermalMinimumDurationSeconds: 20,
   turnRateThresholdRadS: 0.08,
+  maximumContinuousGapSeconds: 60,
 }
 
 const ACTIVITY_OVERRIDES: Readonly<Record<ActivityType, Readonly<Record<string, number>>>> = {
@@ -30,9 +31,9 @@ const ACTIVITY_OVERRIDES: Readonly<Record<ActivityType, Readonly<Record<string, 
 
 export function createDefaultAnalysisProfile(activityType: ActivityType): AnalysisProfile {
   return {
-    id: `default-${activityType.toLowerCase()}-1`,
+    id: `default-${activityType.toLowerCase()}-1.0.1`,
     activityType,
-    version: '1.0.0',
+    version: '1.0.1',
     name: `Profil ${activityType} V1`,
     parameters: { ...COMMON_PARAMETERS, ...ACTIVITY_OVERRIDES[activityType] },
     createdAt: '2026-08-21T00:00:00.000Z',

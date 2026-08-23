@@ -89,6 +89,33 @@ describe('analyseurs V1', () => {
     expect(run.result.warnings).toContain('Analyse séquentielle de 2 fenêtres bornées ; RAW original intégral conservé.')
   })
 
+  it('n’invente ni ligne droite ni distance pendant une suspension des capteurs', () => {
+    const start = Date.parse('2026-08-21T10:00:00.000Z')
+    const currentSession = {
+      ...session('suspended', 'damien', 'CAR'),
+      startTime: new Date(start).toISOString(),
+      endTime: new Date(start + 60 * 60_000).toISOString(),
+    }
+    const windowResult = (timestamp: number, latitude: number) => {
+      const raw = createPipelineDataset(currentSession.id, currentSession.participantId, [
+        sample('position', { latitude, longitude: 2 }, timestamp, 'gps'),
+        sample('position', { latitude: latitude + 0.001, longitude: 2 }, timestamp + 10_000, 'gps'),
+      ], 'RAW')
+      const derived = deriveDataset({ ...transitionDataset(raw, 'NORMALIZED'), stage: 'FUSED' as const })
+      return executeAnalysis(currentSession, derived, DEFAULT_ANALYSIS_PROFILES.CAR, [], { analysisVersion: '1.2.0', engineBuildId: 'test' }).result
+    }
+
+    const run = executeBatchedAnalysis(currentSession, [windowResult(start, 46), windowResult(start + 50 * 60_000, 48)], DEFAULT_ANALYSIS_PROFILES.CAR, [], {
+      analysisVersion: '1.2.0', engineBuildId: 'test', now: '2026-08-23T00:00:00.000Z',
+    })
+
+    expect(run.result.routePreviewSegments).toHaveLength(2)
+    expect(run.result.metrics.find((metric) => metric.id === 'distance')?.value).toBeLessThan(300)
+    expect(run.result.quality.coverage).toBeCloseTo(20 / 3_600)
+    expect(run.result.metrics.find((metric) => metric.id === 'duration')?.value).toBe(3_600)
+    expect(run.result.warnings.some((warning) => warning.includes('Couverture temporelle'))).toBe(true)
+  })
+
   it('conserve l’analyse originale quand une nouvelle version est attachée', () => {
     const currentSession = session('history', 'damien', 'RUNNING')
     const raw = createPipelineDataset(currentSession.id, currentSession.participantId, samples, 'RAW')
@@ -116,7 +143,7 @@ describe('analyseurs V1', () => {
     expect(next.version).toBe('1.1.0')
     expect(next.parameters.movingSpeedThresholdMps).toBe(0.9)
     expect(source.parameters.movingSpeedThresholdMps).toBe(0.8)
-    expect(() => createVersionedAnalysisProfile(source, '1.0.0', 'Doublon', source.parameters)).toThrow(/différer/)
+    expect(() => createVersionedAnalysisProfile(source, source.version, 'Doublon', source.parameters)).toThrow(/différer/)
   })
 
   it('extrait une fenêtre de segment et filtre des événements comparables', () => {

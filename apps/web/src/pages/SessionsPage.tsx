@@ -10,7 +10,7 @@ import { messages } from '../i18n'
 import { exportSession, type SessionExportKind } from '../session-export'
 
 export function SessionsPage(): ReactNode {
-  const { sessions, participants, analysisRuns, segments, importData, deleteSession } = useAppData()
+  const { sessions, participants, analysisRuns, analysisProfiles, segments, importData, deleteSession } = useAppData()
   const [candidate, setCandidate] = useState<ImportResult>()
   const [participantId, setParticipantId] = useState('')
   const [sessionId, setSessionId] = useState('')
@@ -41,7 +41,11 @@ export function SessionsPage(): ReactNode {
     const session = sessions.find((candidateSession) => candidateSession.id === targetSessionId)
     if (session === undefined) return
     try {
-      await exportSession(session, analysisRuns.filter((run) => run.sessionId === session.id), segments.filter((segment) => segment.sessionId === session.id), kind)
+      const runs = analysisRuns.filter((run) => run.sessionId === session.id)
+      const current = runs.find((run) => run.id === session.latestAnalysisRunId) ?? runs.at(-1)
+      const profile = analysisProfiles.find((candidate) => candidate.activityType === session.activityType && candidate.version === current?.analysisProfileVersion)
+      const maximumContinuityGapMs = Math.max(1, profile?.parameters.maximumContinuousGapSeconds ?? 60) * 1_000
+      await exportSession(session, runs, segments.filter((segment) => segment.sessionId === session.id), kind, maximumContinuityGapMs)
       setMessage(`${messages.sessions.exportReady} ${kind === 'TATRIP' ? '.tatrip' : kind}.`)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error))

@@ -31,6 +31,21 @@ describe('archives froides versionnées', () => {
     expect(() => exportSessionGpx(session('session', 'damien'), [sample('altitude', 31, 1_000)])).toThrow(/Aucun point GPS/)
   })
 
+  it('sépare les segments GPX de part et d’autre d’une suspension', () => {
+    const currentSession = session('gpx-gap', 'damien', 'CAR')
+    const values = [
+      sample('position', { latitude: 46, longitude: 2 }, 1_000, 'gps'),
+      sample('position', { latitude: 46.001, longitude: 2 }, 2_000, 'gps'),
+      sample('position', { latitude: 48, longitude: 2 }, 10 * 60_000, 'gps'),
+      sample('position', { latitude: 48.001, longitude: 2 }, 10 * 60_000 + 1_000, 'gps'),
+    ]
+
+    const gpx = exportSessionGpx(currentSession, values)
+
+    expect(gpx.match(/<trkseg>/g)).toHaveLength(2)
+    expect(exportSessionGpx(currentSession, values, 20 * 60_000).match(/<trkseg>/g)).toHaveLength(1)
+  })
+
   it('réimporte un .tatrip avec son RAW', () => {
     const currentSession = { ...session('session', 'damien'), analysisRunIds: ['run'], originalAnalysisRunId: 'run', latestAnalysisRunId: 'run' }
     const raw = new Uint8Array([1, 2, 3, 4])
