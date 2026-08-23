@@ -120,7 +120,7 @@ describe('stockage local résilient', () => {
         // Parcourir le flux afin de vérifier que la référence supprimée ne reste pas lisible.
         expect(chunk.byteLength).toBe(0)
       }
-    })()).rejects.toThrow(/chunks RAW invalide|Taille du miroir RAW invalide/)
+    })()).rejects.toThrow(/Chunk RAW manquant/)
   })
 
   it('supprime atomiquement la session, ses analyses et segments sans effacer les autres participants', async () => {

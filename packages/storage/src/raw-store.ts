@@ -207,22 +207,24 @@ export class ProgressiveRawStore {
 
 async function* readIndexedDbChunks(
   streamId: string,
-  skipBytes = 0,
-  required = false,
-  expectedByteLength?: number,
-  expectedChunkCount?: number,
+  skipBytes: number,
+  required: boolean,
+  expectedByteLength: number,
+  expectedChunkCount: number,
 ): AsyncGenerator<Uint8Array> {
   const database = await openTrackAnalyserDatabase()
-  const transaction = database.transaction('rawChunks', 'readonly')
-  const index = transaction.store.index('streamId')
-  let cursor = await index.openCursor(IDBKeyRange.only(streamId))
   let remainingSkip = skipBytes
-  let chunkCount = 0
   let byteLength = 0
-  while (cursor !== null) {
-    const chunk = cursor.value
-    if (chunk.index !== chunkCount) throw new Error(`Ordre des chunks RAW invalide pour ${streamId}.`)
-    chunkCount += 1
+  for (let index = 0; index < expectedChunkCount; index += 1) {
+    // Ouvrir une lecture courte par chunk afin qu'IndexedDB puisse clore chaque transaction entre deux yields.
+    // Éviter de conserver un curseur actif pendant que le décodeur consommateur effectue ses propres attentes.
+    const key = `${streamId}:${index.toString().padStart(8, '0')}`
+    const chunk = await database.get('rawChunks', key)
+    if (chunk === undefined) {
+      if (required && index === 0) throw new Error(`Lecture OPFS impossible et miroir RAW absent pour ${streamId}.`)
+      throw new Error(`Chunk RAW manquant : ${key}.`)
+    }
+    if (chunk.streamId !== streamId || chunk.index !== index) throw new Error(`Ordre des chunks RAW invalide pour ${streamId}.`)
     byteLength += chunk.bytes.byteLength
     if (bytesToHex(sha256(chunk.bytes)) !== chunk.sha256) throw new Error(`Chunk RAW corrompu : ${chunk.key}.`)
     if (remainingSkip >= chunk.bytes.byteLength) remainingSkip -= chunk.bytes.byteLength
@@ -231,13 +233,9 @@ async function* readIndexedDbChunks(
       remainingSkip = 0
       if (bytes.byteLength > 0) yield bytes
     }
-    cursor = await cursor.continue()
   }
-  await transaction.done
-  if (required && chunkCount === 0) throw new Error(`Lecture OPFS impossible et miroir RAW absent pour ${streamId}.`)
   if (remainingSkip > 0) throw new Error(`Miroir RAW incomplet pour ${streamId}.`)
-  if (expectedChunkCount !== undefined && chunkCount !== expectedChunkCount) throw new Error(`Nombre de chunks RAW invalide pour ${streamId}.`)
-  if (expectedByteLength !== undefined && byteLength !== expectedByteLength) throw new Error(`Taille du miroir RAW invalide pour ${streamId}.`)
+  if (byteLength !== expectedByteLength) throw new Error(`Taille du miroir RAW invalide pour ${streamId}.`)
 }
 
 async function deleteChunkKeys(database: Awaited<ReturnType<typeof openTrackAnalyserDatabase>>, keys: readonly string[]): Promise<void> {
