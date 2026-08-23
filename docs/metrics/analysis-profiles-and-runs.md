@@ -16,6 +16,8 @@ L’écran Profils dérive une nouvelle version sémantique sans modifier le pro
 
 La Session conserve aussi `analysisAttemptVersion`. Un échec explicite n’est pas relancé en boucle avec le même moteur. Lorsqu’une version plus récente est installée et qu’aucun `AnalysisRun` n’existe, la Session est automatiquement remise en analyse. Le moteur 1.0.1 remplace les expansions de grands tableaux en arguments de fonction par des parcours itératifs compatibles avec les gros RAW Safari.
 
+Le moteur 1.1.0 traite les longues Sessions par fenêtres bornées. Il combine les quantités additives, extrema, moyennes, variances et RMS selon leur sémantique à partir des résultats de fenêtres et de leurs échantillons de continuité. Les percentiles globaux sont une combinaison pondérée déterministe des percentiles locaux et sont donc signalés comme résultat d’analyse séquentielle. Les événements temporels adjacents de même type sont réunis lorsque leur continuité traverse une frontière, puis les nombres d’événements sont recalculés depuis cette chronologie réunie. Le fingerprint reste fondé sur le RAW complet, le profil et la version moteur.
+
 ## Calibration terrain
 
 Les valeurs V1 sont des amorces documentées : seuil de mouvement, pause, freinage, accélération latérale, impact, vario, thermique et rotation. Elles nécessitent des acquisitions contrôlées sur plusieurs appareils, fixations, activités et conditions. Toute correction produit une nouvelle version du profil ; elle ne modifie jamais un run existant.

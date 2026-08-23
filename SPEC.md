@@ -1,7 +1,7 @@
 # TrackAnalyser — Spécification maître unifiée
 
 **Statut :** spécification fonctionnelle, technique, matérielle et produit autoritaire  
-**Version du document :** 1.9
+**Version du document :** 2.0
 **Date :** 23 août 2026
 **Dépôt applicatif :** `sicho95/TrackAnalyser`  
 **Mémoire SichoBrain :** `200_PROJECTS/TrackAnalyzer/SPEC.md`
@@ -556,6 +556,9 @@ interface Session {
   analysisStatus?: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
   analysisAttemptVersion?: string
   analysisError?: string
+  activeRawStreamId?: string
+  activeRawMediaType?: string
+  activeRawFormatVersion?: number
 }
 ```
 
@@ -630,7 +633,13 @@ Mémoire vive : buffers courts nécessaires à l’acquisition, aux calculs temp
 
 Les collections de mesures peuvent dépasser les limites d’arguments des moteurs JavaScript. Ne jamais appliquer `push(...mesures)`, `Math.min(...mesures)`, `Math.max(...mesures)` ou une construction équivalente à un flux de taille non bornée. Parcourir ou réduire les collections de façon itérative. Pendant une analyse, libérer les représentations intermédiaires du pipeline dès que l’étape suivante les remplace et ne pas construire une chaîne JSON géante pour l’empreinte de reproductibilité.
 
-Regrouper progressivement les lignes NDJSON d’acquisition en chunks d’environ 256 Kio avant écriture OPFS/IndexedDB. Ne pas créer un enregistrement IndexedDB par mesure IMU. Supprimer les miroirs volumineux par lots bornés après la première analyse réussie.
+Les nouvelles acquisitions smartphone utilisent le format binaire auto-décrit `TrackAnalyser RAW V2`. Une définition mutualise canal, unité, source et provenance statique ; une frame mutualise l’horodatage des mesures simultanées et conserve les valeurs physiques en `Float64`. Le format historique NDJSON reste lisible. Ne jamais réduire silencieusement la fréquence ni supprimer un canal physique pour diminuer le volume.
+
+Regrouper progressivement les enregistrements en chunks d’environ 256 Kio avant écriture OPFS/IndexedDB, tout en forçant un flush durable au plus tard toutes les cinq secondes lorsque le débit compact est inférieur à cette cible. Ne pas créer un enregistrement IndexedDB par mesure IMU. Supprimer les miroirs volumineux par lots bornés après la première analyse réussie.
+
+L’analyse finale des longues Sessions doit lire les références RAW comme des itérateurs triés et effectuer une fusion multi-source par fenêtres bornées. Une fenêtre ne dépasse pas cinq minutes ni 75 000 mesures, hors échantillons de continuité par couple source/canal. Les résultats sont combinés en un unique `AnalysisRun` : quantités additives, extrema et moments statistiques sont agrégés selon leur sémantique ; les percentiles globaux sont estimés de façon déterministe à partir des fenêtres et ce mode est signalé dans les avertissements. Le RAW intégral reste la source permettant une future réanalyse plus précise.
+
+La cible smartphone V1 est dix heures à la cadence réellement observée sur le premier appareil terrain, soit environ 50 frames DeviceMotion/s et onze canaux. Le test de capacité doit conserver tous ces canaux et maintenir le RAW V2 sous 512 Mio. Comme le miroir de récupération coexiste temporairement avec OPFS, l’accueil mesure le quota navigateur et réserve deux fois le RAW estimé plus 128 Mio de marge. Cette borne doit être recalibrée pour un futur boîtier à 200–400 Hz ; elle ne justifie jamais une perte silencieuse de données.
 
 ## 18.2. Tiède
 
@@ -1399,7 +1408,7 @@ mêmes RAW
 = mêmes résultats
 ```
 
-Ajouter une régression volumétrique au-delà de la limite d’arguments JavaScript et valider un replay complet d’au moins 130 000 mesures. Les sauvegardes terrain volumineuses peuvent servir à une validation locale sans être commitées.
+Ajouter une régression volumétrique au-delà de la limite d’arguments JavaScript et valider un replay complet d’au moins 130 000 mesures. Ajouter une simulation couvrant dix heures, vérifier les bornes temporelles des fenêtres et projeter à cadence DeviceMotion réelle la taille du RAW compact sous 512 Mio. Les sauvegardes terrain volumineuses peuvent servir à une validation locale sans être commitées.
 
 ## Simulation
 
@@ -1594,6 +1603,7 @@ La V1 est acceptable si notamment :
 41. une interruption avant finalisation récupère les chunks grâce au `activeRawStreamId`, et une analyse interrompue reprend au lancement suivant.
 42. les imports utilisent une flèche descendante entrant dans une boîte, les exports une flèche montante sortant de cette boîte, et une Session disposant de positions réelles peut être exportée en GPX 1.1.
 43. une Session de plusieurs centaines de milliers de mesures est rejouée et analysée sans débordement de pile ; un échec d’un ancien moteur est automatiquement retenté une seule fois par nouvelle `analysisVersion`.
+44. une acquisition smartphone projetée sur dix heures conserve les onze canaux DeviceMotion sous 512 Mio en RAW V2, expose la marge de stockage avant le départ et produit une analyse unique par fenêtres de cinq minutes ou 75 000 mesures au maximum sans charger le trajet complet en mémoire.
 
 ---
 

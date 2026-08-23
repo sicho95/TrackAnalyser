@@ -1,6 +1,7 @@
 import { ACTIVITY_TYPES, type ActivityType } from '@track-analyser/domain'
+import { estimateRecordingStorage, type RecordingStorageReadiness } from '@track-analyser/storage'
 import { ScreenHeader, StatusPill } from '@track-analyser/ui'
-import { Navigation, Play, ShieldCheck, Smartphone } from 'lucide-react'
+import { HardDrive, Navigation, Play, ShieldCheck, Smartphone } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../context'
@@ -15,6 +16,7 @@ export function HomePage(): ReactNode {
   const [phase, setPhase] = useState<'IDLE' | 'AUTHORIZING' | 'COUNTDOWN' | 'STARTING'>('IDLE')
   const [countdown, setCountdown] = useState(5)
   const [motionAvailable, setMotionAvailable] = useState(true)
+  const [storageReadiness, setStorageReadiness] = useState<RecordingStorageReadiness>()
   const defaultsApplied = useRef(false)
   const timer = useRef<number | undefined>(undefined)
   const navigate = useNavigate()
@@ -32,6 +34,10 @@ export function HomePage(): ReactNode {
     }
     defaultsApplied.current = true
   }, [equipment, participants, ready, settings.lastSessionDefaults])
+
+  useEffect(() => {
+    void estimateRecordingStorage(10).then(setStorageReadiness)
+  }, [activeSession?.id])
 
   useEffect(() => () => {
     if (timer.current !== undefined) window.clearInterval(timer.current)
@@ -103,6 +109,7 @@ export function HomePage(): ReactNode {
             {equipment.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select></label>
           {participants.length === 0 ? <p className="form-notice">{messages.home.participantNotice}</p> : null}
+          {storageReadiness === undefined ? null : <p className={`form-notice storage-readiness ${storageReadiness.status.toLowerCase()}`}><HardDrive size={17} aria-hidden="true" />{storageReadinessMessage(storageReadiness)}</p>}
           {error.length === 0 ? null : <p className="error-message">{error}</p>}
           <button className="primary-button" type="submit" disabled={!ready || participantId.length === 0 || phase !== 'IDLE'}><Play size={20} aria-hidden="true" />{phase === 'AUTHORIZING' ? messages.home.authorizing : messages.home.start}</button>
         </form>
@@ -122,4 +129,17 @@ export function HomePage(): ReactNode {
       </div> : null}
     </div>
   )
+}
+
+function storageReadinessMessage(readiness: RecordingStorageReadiness): string {
+  const raw = formatGigabytes(readiness.estimatedRawBytes)
+  if (readiness.status === 'UNKNOWN' || readiness.availableBytes === undefined) return `${messages.home.storageUnknown} RAW 10 h estimé : ${raw}.`
+  const available = formatGigabytes(readiness.availableBytes)
+  return readiness.status === 'READY'
+    ? `${messages.home.storageReady} ${available} disponibles · estimation RAW 10 h de référence ≤ ${raw}.`
+    : `${messages.home.storageLow} ${available} disponibles ; environ ${formatGigabytes(readiness.requiredAvailableBytes)} requis temporairement pour 10 h.`
+}
+
+function formatGigabytes(bytes: number): string {
+  return `${(bytes / (1024 ** 3)).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Go`
 }

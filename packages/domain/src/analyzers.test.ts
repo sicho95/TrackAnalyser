@@ -1,4 +1,4 @@
-import { ACTIVITY_TYPES, attachAnalysisRun, comparableEventValues, createPipelineDataset, createVersionedAnalysisProfile, DEFAULT_ANALYSIS_PROFILES, deriveDataset, executeAnalysis, normalizedSegment, transitionDataset, type RawDataReference } from './index'
+import { ACTIVITY_TYPES, attachAnalysisRun, comparableEventValues, createPipelineDataset, createVersionedAnalysisProfile, DEFAULT_ANALYSIS_PROFILES, deriveDataset, executeAnalysis, executeBatchedAnalysis, normalizedSegment, transitionDataset, type RawDataReference } from './index'
 import { describe, expect, it } from 'vitest'
 import { sample, session } from '../../../tests/helpers'
 
@@ -54,6 +54,39 @@ describe('analyseurs V1', () => {
 
     expect(same.inputFingerprint).toBe(first.inputFingerprint)
     expect(changed.inputFingerprint).not.toBe(first.inputFingerprint)
+  })
+
+  it('combine des fenêtres bornées en une seule analyse reproductible', () => {
+    const start = Date.parse('2026-08-21T10:00:00.000Z')
+    const reference: RawDataReference = {
+      id: 'raw-long', sessionId: 'long', sourceId: 'phone', storage: 'INDEXED_DB', path: 'raw-long',
+      mediaType: 'application/vnd.track-analyser.raw;version=2', formatVersion: 2, byteLength: 100, sha256: 'long-sha', chunkCount: 1, immutable: true,
+      createdAt: '2026-08-21T10:00:00.000Z',
+    }
+    const currentSession = {
+      ...session('long', 'damien', 'RUNNING'),
+      startTime: '2026-08-21T10:00:00.000Z',
+      endTime: '2026-08-21T10:02:00.000Z',
+      rawDataReferences: [reference],
+    }
+    const windowResult = (offset: number, distanceStart: number, distanceEnd: number) => {
+      const raw = createPipelineDataset('long', 'damien', [
+        sample('distance', distanceStart, start + offset, 'phone'),
+        sample('distance', distanceEnd, start + offset + 60_000, 'phone'),
+        sample('speed', 10, start + offset, 'phone'),
+        sample('speed', 10, start + offset + 60_000, 'phone'),
+      ], 'RAW')
+      const derived = deriveDataset({ ...transitionDataset(raw, 'NORMALIZED'), stage: 'FUSED' as const })
+      return executeAnalysis(currentSession, derived, DEFAULT_ANALYSIS_PROFILES.RUNNING, [], { analysisVersion: '1.1.0', engineBuildId: 'test' }).result
+    }
+    const run = executeBatchedAnalysis(currentSession, [windowResult(0, 0, 1_000), windowResult(60_000, 1_000, 2_000)], DEFAULT_ANALYSIS_PROFILES.RUNNING, [], {
+      analysisVersion: '1.1.0', engineBuildId: 'test', now: '2026-08-23T00:00:00.000Z',
+    })
+
+    expect(run.result.metrics.find((metric) => metric.id === 'distance')?.value).toBe(2_000)
+    expect(run.result.metrics.find((metric) => metric.id === 'duration')?.value).toBe(120)
+    expect(run.result.metrics.find((metric) => metric.id === 'pace.mean')?.value).toBe(60)
+    expect(run.result.warnings).toContain('Analyse séquentielle de 2 fenêtres bornées ; RAW original intégral conservé.')
   })
 
   it('conserve l’analyse originale quand une nouvelle version est attachée', () => {

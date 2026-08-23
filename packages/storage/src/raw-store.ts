@@ -8,6 +8,34 @@ export interface RawWriteOptions {
   sourceId: string
   mediaType: string
   importedFileName?: string
+  formatVersion?: number
+}
+
+export interface RecordingStorageReadiness {
+  durationHours: number
+  estimatedRawBytes: number
+  requiredAvailableBytes: number
+  availableBytes?: number
+  status: 'READY' | 'LOW' | 'UNKNOWN'
+}
+
+const COMPACT_RAW_BYTES_PER_HOUR_UPPER_BOUND = (512 * 1024 * 1024) / 10
+
+export async function estimateRecordingStorage(durationHours = 10): Promise<RecordingStorageReadiness> {
+  const estimatedRawBytes = Math.ceil(COMPACT_RAW_BYTES_PER_HOUR_UPPER_BOUND * durationHours)
+  // Réserver le RAW, son miroir de récupération temporaire et une marge pour les index et analyses.
+  const requiredAvailableBytes = estimatedRawBytes * 2 + 128 * 1024 * 1024
+  if (typeof navigator === 'undefined' || navigator.storage?.estimate === undefined) {
+    return { durationHours, estimatedRawBytes, requiredAvailableBytes, status: 'UNKNOWN' }
+  }
+  try {
+    const estimate = await navigator.storage.estimate()
+    if (estimate.quota === undefined || estimate.usage === undefined) return { durationHours, estimatedRawBytes, requiredAvailableBytes, status: 'UNKNOWN' }
+    const availableBytes = Math.max(0, estimate.quota - estimate.usage)
+    return { durationHours, estimatedRawBytes, requiredAvailableBytes, availableBytes, status: availableBytes >= requiredAvailableBytes ? 'READY' : 'LOW' }
+  } catch {
+    return { durationHours, estimatedRawBytes, requiredAvailableBytes, status: 'UNKNOWN' }
+  }
 }
 
 async function opfsAvailable(): Promise<boolean> {
@@ -93,6 +121,7 @@ export class ProgressiveRawStore {
       sha256: result.sha256,
       chunkCount: result.chunkCount,
       immutable: true,
+      ...(options.formatVersion === undefined ? {} : { formatVersion: options.formatVersion }),
       ...(options.importedFileName === undefined ? {} : { importedFileName: options.importedFileName }),
       createdAt: new Date().toISOString(),
     }
@@ -137,6 +166,7 @@ export class ProgressiveRawStore {
       sha256: bytesToHex(hasher.digest()),
       chunkCount: chunks.length,
       immutable: true,
+      ...(options.formatVersion === undefined ? {} : { formatVersion: options.formatVersion }),
       ...(options.importedFileName === undefined ? {} : { importedFileName: options.importedFileName }),
       createdAt: chunks[0]?.createdAt ?? new Date().toISOString(),
     }

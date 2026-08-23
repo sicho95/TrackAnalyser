@@ -1,4 +1,4 @@
-import type { SensorCapabilities, SensorSample, SensorSource } from '@track-analyser/domain'
+import { COMPACT_RAW_MEDIA_TYPE, decodeCompactRaw, type SensorCapabilities, type SensorSample, type SensorSource } from '@track-analyser/domain'
 import { LocalRepositories, ProgressiveRawStore, SessionCheckpointService, deleteTrackAnalyserDatabaseForTests } from '@track-analyser/storage'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { sample, session } from '../../../tests/helpers'
@@ -44,14 +44,22 @@ describe('coordinateur d’acquisition résilient', () => {
 
     const reference = await coordinator.stop()
     const completed = await repositories.sessions.get(current.id)
-    expect(reference.chunkCount).toBe(1)
+    expect(reference.chunkCount).toBeGreaterThan(0)
+    expect(reference).toMatchObject({ mediaType: COMPACT_RAW_MEDIA_TYPE, formatVersion: 2 })
     expect(completed?.status).toBe('COMPLETED')
     expect(completed?.analysisStatus).toBe('PENDING')
     expect(completed?.activeRawStreamId).toBeUndefined()
     expect(completed?.rawDataReferences[0]?.id).toBe(reference.id)
     const storedChunks: Uint8Array[] = []
     for await (const chunk of rawStore.read(reference)) storedChunks.push(chunk)
-    expect(storedChunks).toHaveLength(1)
-    expect(new TextDecoder().decode(storedChunks[0]).trim().split('\n')).toHaveLength(101)
+    expect(storedChunks).toHaveLength(reference.chunkCount)
+    const decoded: SensorSample[] = []
+    for await (const sample of decodeCompactRaw(chunks(storedChunks))) decoded.push(sample)
+    expect(decoded).toHaveLength(101)
+    expect(decoded.at(-1)?.timestamp).toBe(1_100)
   })
 })
+
+async function* chunks(values: readonly Uint8Array[]): AsyncGenerator<Uint8Array> {
+  for (const value of values) yield value
+}

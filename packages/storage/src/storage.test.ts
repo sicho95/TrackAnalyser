@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { session } from '../../../tests/helpers'
+import { COMPACT_RAW_MEDIA_TYPE, CompactRawEncoder } from '@track-analyser/domain'
+import { sample, session } from '../../../tests/helpers'
 import { SessionCheckpointService } from './checkpoints'
 import { DATABASE_NAME, deleteTrackAnalyserDatabaseForTests, openTrackAnalyserDatabase } from './database'
-import { chunkBytes, ProgressiveRawStore } from './raw-store'
+import { chunkBytes, estimateRecordingStorage, ProgressiveRawStore } from './raw-store'
 import { LocalRepositories } from './repositories'
 
 describe('stockage local résilient', () => {
@@ -41,6 +42,31 @@ describe('stockage local résilient', () => {
     const reference = recovered?.rawDataReferences[0]
     if (reference !== undefined) for await (const chunk of rawStore.read(reference)) replayed.push(...chunk)
     expect(replayed).toEqual([...bytes])
+  })
+
+  it('récupère le format compact versionné après une interruption Safari', async () => {
+    const repositories = await LocalRepositories.open()
+    const rawStore = new ProgressiveRawStore()
+    const service = new SessionCheckpointService(repositories, rawStore)
+    const encoder = new CompactRawEncoder()
+    const values = [encoder.header(), ...encoder.push(sample('speed', 12, 1_000, 'phone')), ...encoder.finish()]
+    const bytes = new Uint8Array(values.reduce((sum, value) => sum + value.byteLength, 0))
+    let offset = 0
+    values.forEach((value) => { bytes.set(value, offset); offset += value.byteLength })
+    await rawStore.write('stream-compact', chunkBytes(bytes, 32), { sessionId: 'compact', sourceId: 'phone', mediaType: COMPACT_RAW_MEDIA_TYPE, formatVersion: 2 })
+    const current = {
+      ...session('compact', 'damien'),
+      status: 'DRAFT' as const,
+      activeRawStreamId: 'stream-compact',
+      activeRawMediaType: COMPACT_RAW_MEDIA_TYPE,
+      activeRawFormatVersion: 2,
+    }
+    delete current.endTime
+    await service.markRecording(current)
+
+    await service.recoverInterrupted()
+
+    expect((await repositories.sessions.get('compact'))?.rawDataReferences[0]).toMatchObject({ mediaType: COMPACT_RAW_MEDIA_TYPE, formatVersion: 2 })
   })
 
   it('chunk les RAW et refuse une modification sous la même identité', async () => {
@@ -118,5 +144,15 @@ describe('stockage local résilient', () => {
     await repositories.segments.delete('segment-a')
     await repositories.restore(snapshot)
     expect((await repositories.segments.get('segment-a'))?.sessionId).toBe('session-a')
+  })
+
+  it('signale si la marge locale couvre le RAW et son miroir pour dix heures', async () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, 'storage')
+    Object.defineProperty(navigator, 'storage', { configurable: true, value: { estimate: async () => ({ quota: 4 * 1024 ** 3, usage: 1 * 1024 ** 3 }) } })
+    await expect(estimateRecordingStorage(10)).resolves.toMatchObject({ status: 'READY', durationHours: 10 })
+    Object.defineProperty(navigator, 'storage', { configurable: true, value: { estimate: async () => ({ quota: 1 * 1024 ** 3, usage: 900 * 1024 ** 2 }) } })
+    await expect(estimateRecordingStorage(10)).resolves.toMatchObject({ status: 'LOW' })
+    if (original === undefined) delete (navigator as { storage?: StorageManager }).storage
+    else Object.defineProperty(navigator, 'storage', original)
   })
 })
